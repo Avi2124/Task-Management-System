@@ -14,11 +14,6 @@ export const signupSchema = Joi.object({
   name: Joi.string().min(2).max(50).required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(6).max(16).required(),
-  company: Joi.when("role", {
-    is: "superadmin",
-    then: Joi.string().optional().allow(null, ""),
-    otherwise: Joi.string().required(),
-  }),
   companyId: Joi.when("role", {
     is: "superadmin",
     then: Joi.string().optional().allow(null, ""),
@@ -30,8 +25,7 @@ export const signupSchema = Joi.object({
 // login
 export const loginSchema = Joi.object({
   email: Joi.string().email().required(),
-  password: Joi.string().required(),
-  companyId: Joi.string(),
+  password: Joi.string().required()
 });
 
 // login OTP validation

@@ -1,4 +1,5 @@
 import { User } from "../models/userModel.js";
+import Company from "../models/companyModel.js";
 import bcrypt from "bcrypt";
 import { sendResponse } from "../utils/sendResponse.js";
 import jwt from "jsonwebtoken";
@@ -10,7 +11,7 @@ const OTP_EXP_MINUTES = 5;
 // ---------- SIGNUP ----------
 export const signup = async (req, res) => {
     try {
-        const {name, email, password, role, company, companyId} = req.body;
+        const {name, email, password, role, companyId} = req.body;
         const existing = await User.findOne({email});
         if(existing){
             return sendResponse(res, {
@@ -22,7 +23,25 @@ export const signup = async (req, res) => {
             });
         }
 
-        const user = await User.create({name, email, password, role, company, companyId});
+        let companyObjectId = null;
+        let finalCompanyId = null;
+
+        if(role !== "superadmin"){
+            const company = await Company.findOne({companyId});
+            if(!company){
+                return sendResponse(res, {
+                    status: false,
+                    statusCode: 400,
+                    message: "Company not found.",
+                    data: null,
+                    error: {code: "COMPANY_NOT_FOUND"}
+                });
+            }
+            companyObjectId = company._id;
+            finalCompanyId = company.companyId;
+        }
+
+        const user = await User.create({name, email, password, role, company: companyObjectId, companyId: finalCompanyId});
         
         return sendResponse(res, {
             status: true,
@@ -55,7 +74,7 @@ export const signup = async (req, res) => {
 // ---------- LOGIN ----------
 export const login = async (req, res) => {
     try {
-        const {email, password, companyId} = req.body;
+        const {email, password} = req.body;
         const user = await User.findOne({email});
         if(!user){
             return sendResponse(res, {
@@ -77,17 +96,17 @@ export const login = async (req, res) => {
                 error: {code: "INVALID_CREDENTIALS"}
             });
         }
-        if(user.role !== "superadmin"){
-            if(!companyId || user.companyId !== companyId){
-                return sendResponse(res, {
-                    status: false,
-                    statusCode: 400,
-                    message: "Invalid companyId",
-                    data: null,
-                    error: {code: "INVALID_COMPANY_ID"}
-                });
-            }
-        }
+        // if(user.role !== "superadmin"){
+        //     if(!companyId || user.companyId !== companyId){
+        //         return sendResponse(res, {
+        //             status: false,
+        //             statusCode: 400,
+        //             message: "Invalid companyId",
+        //             data: null,
+        //             error: {code: "INVALID_COMPANY_ID"}
+        //         });
+        //     }
+        // }
         // OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const hashedOtp = await bcrypt.hash(otp, 10);
@@ -159,9 +178,7 @@ export const verifyOtpAndIssueTokens = async (req, res) => {
             status: true,
             statusCode: 200,
             message: "OTP verified. Login successful",
-            data: {
-                accessToken,
-                refreshToken,
+            data: {                
                 user: {
                     id: user._id,
                     name: user.name,
@@ -169,7 +186,9 @@ export const verifyOtpAndIssueTokens = async (req, res) => {
                     role: user.role,
                     company: user.company,
                     companyId: user.companyId,
-                    profileImage: user.profileImage
+                    profileImage: user.profileImage,
+                    accessToken,
+                    refreshToken                    
                 },
             },
         });
