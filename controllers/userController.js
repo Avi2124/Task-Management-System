@@ -105,7 +105,11 @@ export const verifyOtpAndIssueTokens = asyncHandler(async (req, res, next) => {
   }
 
   if (!user.otpCode || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
-    throw new AppError("OTP expired or not found. Please login again.", 400, "OTP_EXPIRED");
+    throw new AppError(
+      "OTP expired or not found. Please login again.",
+      400,
+      "OTP_EXPIRED",
+    );
   }
 
   const isMatch = await bcrypt.compare(otp, user.otpCode);
@@ -145,7 +149,11 @@ export const refreshAccessToken = asyncHandler(async (req, res, next) => {
   const { refreshToken } = req.body;
 
   if (!refreshToken) {
-    throw new AppError("Refresh token is required", 400, "REFRESH_TOKEN_REQUIRED");
+    throw new AppError(
+      "Refresh token is required",
+      400,
+      "REFRESH_TOKEN_REQUIRED",
+    );
   }
 
   let decoded;
@@ -175,30 +183,111 @@ export const refreshAccessToken = asyncHandler(async (req, res, next) => {
   });
 });
 
+// ---------- UPADTE USER PROFILE ----------
+export const updateUser = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { name, password, profileImage } = req.body;
+
+  if (!req.user || !req.user.id) {
+    throw new AppError("Unauthorized", 401, "UNAUTHORIZED");
+  }
+
+  if (req.user.role !== "superadmin") {
+    if (req.user.id !== id) {
+      throw new AppError(
+        "You are not allowed to update this user",
+        403,
+        "FORBIDDEN"
+      );
+    }
+  }
+
+  const user = await User.findById(id);
+  if (!user) {
+    throw new AppError("User not found", 404, "USER_NOT_FOUND");
+  }
+
+  if (name) user.name = name;
+  if (profileImage) user.profileImage = profileImage;
+  if (password) user.password = password;
+
+  await user.save();
+
+  return sendResponse(res, {
+    status: true,
+    statusCode: 200,
+    message: "User Updated Successfully",
+    data: {
+      user: {
+        id: user._id,
+        name: user.name,
+        profileImage: user.profileImage,
+      },
+    },
+    error: null,
+  });
+});
+
+// ---------- DELETE USER ----------
+export const deleteUser = asyncHandler(async(req, res, next) => {
+    const {id} = req.params;
+    if(!req.user || !["superadmin", "admin"].includes(req.user.role)){
+        throw new AppError("Only admin or superadmin can delete users", 403, "FORBIDDEN");
+    }
+    const user = await User.findById(id);
+    if(!user){
+        throw new AppError("User not found", 404, "USER_NOT_FOUND");
+    }
+    await User.findByIdAndDelete(id);
+    return sendResponse(res, {
+        status: true,
+        statusCode: 200,
+        message: "User deleted successfully",
+        data: null,
+        error: null
+    });
+});
+
+// -------- LIST USERS ALL USERS --------
+
+
+
 // ---------- LOGOUT ----------
 export const logout = asyncHandler(async (req, res, next) => {
-    const { refreshToken } = req.body;
-    if (!refreshToken) {
-        throw new AppError("Refresh token is required to logout", 400, "NO_REFRESH_TOKEN");
+  const { refreshToken } = req.body;
+  if (!refreshToken) {
+    throw new AppError(
+      "Refresh token is required to logout",
+      400,
+      "NO_REFRESH_TOKEN",
+    );
+  }
+
+  if (refreshToken) {
+    try {
+      const decoded = jwt.verify(
+        refreshToken,
+        process.env.REFRESH_TOKEN_SECRET,
+      );
+      const user = await User.findById(decoded._id);
+      if (user) {
+        user.refreshToken = null;
+        await user.save();
+      }
+    } catch {
+      throw new AppError(
+        "Invalid or expired refresh token during logout",
+        400,
+        "INVALID_REFRESH_TOKEN",
+      );
     }
 
-    if (refreshToken) {
-      try {
-        const decoded = jwt.verify(
-          refreshToken,
-          process.env.REFRESH_TOKEN_SECRET,
-        );
-        const user = await User.findById(decoded._id);
-        if (user) {
-          user.refreshToken = null;
-          await user.save();
-        }
-      } catch {
-        throw new AppError("Invalid or expired refresh token during logout", 400, "INVALID_REFRESH_TOKEN");
-        };
-
     return sendResponse(res, {
+      status: true,
+      statusCode: 200,
       message: "Logged out",
+      data: null,
+      error: null,
     });
   }
 });

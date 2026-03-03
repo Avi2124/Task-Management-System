@@ -22,6 +22,13 @@ export const signupSchema = Joi.object({
   role: Joi.string().valid("superadmin", "admin", "user").default("user"),
 });
 
+// User Update
+export const updateUserSchema = Joi.object({
+  name: Joi.string().min(2).max(50),
+  password: Joi.string().min(6).max(16),
+  profileImage: Joi.string().uri()
+}).min(1);
+
 // login
 export const loginSchema = Joi.object({
   email: Joi.string().email().required(),
