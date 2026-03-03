@@ -79,7 +79,56 @@ export const getAllCompanies = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const companies = await Company.find();
+  let {
+    page = 1,
+    limit = 10,
+    search = "",
+    sortKey = "name",
+    sortOrder = "asc",
+    ...filters
+  } = req.query;
+
+  page = Number(page) || 1;
+  limit = Number(limit) || 10;
+  if(page < 1) page = 1;
+  if(limit < 1) limit = 10;
+
+  const match = {};
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if(value === undefined || value === null || value === "") return;
+    const values = String(value).split(",").map((v) => v.trim()).filter((v) => v !== "");
+    if(values.length) return;
+    if(values.length === 1){
+        match[key] = values[0];
+    } else {
+        match[key] = {$in: values};
+    }
+});
+
+if(search) {
+    const regex = new RegExp(search, "i");
+    match.$or = [
+        {name: {$regex: regex}},
+        {description: {$regex: regex}},
+        {address: {$regex: regex}},
+        {website: {$regex: regex}},
+        {companyId: {$regex: regex}}
+    ];
+}
+
+const sortDir = sortOrder === "asc" ? 1 : -1;
+if(!sortKey) sortKey = "name";
+const sort = {[sortKey]: sortDir, _id: -1};
+
+const skip = (page - 1) * limit;
+
+const [companies, total] = await Promise.all([
+    Company.find(match).sort(sort).skip(skip).limit(limit),
+    Company.countDocuments(match)
+]);
+
+const totalPages = Math.ceil(total / limit) || 1;
 
   return sendResponse(res, {
     status: true,
@@ -94,7 +143,14 @@ export const getAllCompanies = asyncHandler(async (req, res, next) => {
         website: c.website,
         companyId: c.companyId,
       })),
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages
+      },
     },
+    error: null
   });
 });
 

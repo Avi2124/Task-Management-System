@@ -8,7 +8,7 @@ import { sendOtpEmail } from "../config/mailer.js";
 import { AppError } from "../utils/AppError.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 
-const OTP_EXP_MINUTES = 5;
+const OTP_EXP_MINUTES = Number(process.env.OTP_EXP_MINUTES || 5);
 
 // ---------- SIGNUP ----------
 export const signup = asyncHandler(async (req, res, next) => {
@@ -248,9 +248,176 @@ export const deleteUser = asyncHandler(async(req, res, next) => {
     });
 });
 
+// --------- GET USER BY ID ---------
+export const getUserById = asyncHandler(async(req, res, next) => {
+    const {id} = req.params;
+    if(!req.user || !req.user.id){
+        throw new AppError("Unauthorized", 401, "UNAUTHORIZED");
+    }
+    const requesterRole = req.user.role;
+    const requesterId = req.user.id;
+
+    if(requesterRole === "user"){
+        if(requesterId !== id){
+            throw new AppError("You are not allowed to view this user", 403, "FORBIDDEN");
+        }
+    }
+
+    let filter = {_id: id};
+    if(requesterRole === "admin"){
+        const adminUser = await User.findByid(requesterId);
+        if(!adminUser || !adminUser.companyId){
+            throw new AppError("Admin does not have a comapny assigned", 400, "ADMIN_NO_COMPANY");
+        }
+        filter = {_id: id, companyId: adminUser.companyId};
+    }
+    const user = await User.findOne(filter).select("-password -otpCode -otpExpiresAt -__v");
+    if(!user){
+        throw new AppError("User not found", 404, "USER_NOT_FOUND");
+    }
+    return sendResponse(res, {
+        status: true,
+        statusCode: 200,
+        message: "User fetched successfully",
+        data: {
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                company: user.company,
+                companyId: user.companyId,
+                profileImage: user.profileImage
+            },
+        },
+        error: null
+    });
+});
+
 // -------- LIST USERS ALL USERS --------
+export const getAllUsers = asyncHandler(async (req, res, next) => {
+  if (!req.user || !req.user.id) {
+    throw new AppError("Unauthorized", 401, "UNAUTHORIZED");
+  }
 
+  const requesterRole = req.user.role;
+  const requesterId = req.user.id;
 
+  if (requesterRole === "user") {
+    throw new AppError(
+      "You are not allowed to view all users",
+      403,
+      "FORBIDDEN"
+    );
+  }
+
+  let {
+    page = 1,
+    limit = 2,
+    search = "",
+    sortKey = "createdAt",
+    sortOrder = "desc",
+    ...filters
+  } = req.query;
+
+  page = Number(page) || 1;
+  limit = Number(limit) || 10;
+  if (page < 1) page = 1;
+  if (limit < 1) limit = 10;
+
+  // --- RBAC BASE MATCH ---
+  const match = {};
+  if (requesterRole === "admin") {
+    const adminUser = await User.findById(requesterId);
+    if (!adminUser || !adminUser.companyId) {
+      throw new AppError(
+        "Admin does not have a company assigned",
+        400,
+        "ADMIN_NO_COMPANY"
+      );
+    }
+    match.companyId = adminUser.companyId;
+  }
+
+  // --- EXTRA FILTERS FROM QUERY ---
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+
+    const values = String(value)
+      .split(",")
+      .map((v) => v.trim())
+      .filter((v) => v !== "");
+
+    if (!values.length) return;
+
+    if (values.length === 1) {
+      match[key] = values[0];
+    } else {
+      match[key] = { $in: values };
+    }
+  });
+
+  const pipeline = [];
+  pipeline.push({ $match: match });
+
+  // --- SEARCH ---
+  const searchFields = ["name", "email"];
+  if (search && searchFields.length) {
+    const regex = new RegExp(search, "i");
+    pipeline.push({
+      $match: {
+        $or: searchFields.map((field) => ({
+          [field]: { $regex: regex },
+        })),
+      },
+    });
+  }
+
+  // --- SORT ---
+  const sortDir = sortOrder === "asc" ? 1 : -1;
+  if (!sortKey) sortKey = "createdAt";
+
+  pipeline.push({
+    $sort: { [sortKey]: sortDir, _id: -1 },
+  });
+
+  // --- PAGINATION / FACET ---
+  const skip = (page - 1) * limit;
+  pipeline.push({
+    $facet: {
+      data: [{ $skip: skip }, { $limit: limit }],
+      total: [{ $count: "count" }],
+    },
+  });
+
+  const result = await User.aggregate(pipeline);
+  const data = result[0]?.data || [];
+  const total = result[0]?.total?.[0]?.count || 0;
+
+  const safeUsers = data.map((user) => {
+    const { password, otpCode, otpExpiresAt, refreshToken, __v, ...rest } =
+      user;
+    return rest;
+  });
+
+  const totalPages = Math.ceil(total / limit) || 1;
+
+  return sendResponse(res, {
+    status: true,
+    statusCode: 200,
+    message: "Users fetched successfully",
+    data: {
+      users: safeUsers,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    },
+    error: null,
+  });
+});
 
 // ---------- LOGOUT ----------
 export const logout = asyncHandler(async (req, res, next) => {
