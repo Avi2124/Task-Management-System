@@ -175,11 +175,14 @@ export const refreshAccessToken = asyncHandler(async (req, res, next) => {
   await user.save();
 
   return sendResponse(res, {
+    status: true,
+    statusCode: 200,
     message: "Token refreshed",
     data: {
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
     },
+    error: null,
   });
 });
 
@@ -265,7 +268,7 @@ export const getUserById = asyncHandler(async(req, res, next) => {
 
     let filter = {_id: id};
     if(requesterRole === "admin"){
-        const adminUser = await User.findByid(requesterId);
+        const adminUser = await User.findById(requesterId);
         if(!adminUser || !adminUser.companyId){
             throw new AppError("Admin does not have a comapny assigned", 400, "ADMIN_NO_COMPANY");
         }

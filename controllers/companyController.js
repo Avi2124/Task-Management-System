@@ -66,6 +66,7 @@ export const getCompanyById = asyncHandler(async (req, res, next) => {
         companyId: company.companyId,
       },
     },
+    error: null,
   });
 });
 
@@ -98,7 +99,7 @@ export const getAllCompanies = asyncHandler(async (req, res, next) => {
   Object.entries(filters).forEach(([key, value]) => {
     if(value === undefined || value === null || value === "") return;
     const values = String(value).split(",").map((v) => v.trim()).filter((v) => v !== "");
-    if(values.length) return;
+    if(!values.length) return;
     if(values.length === 1){
         match[key] = values[0];
     } else {
@@ -186,6 +187,7 @@ export const updateCompany = asyncHandler(async (req, res, next) => {
         companyId: company.companyId,
       },
     },
+    error: null,
   });
 });
 
@@ -201,5 +203,7 @@ export const deleteCompany = asyncHandler(async (req, res, next) => {
     status: true,
     statusCode: 200,
     message: "Company deleted successfully",
+    data: null,
+    error: null
   });
 });
