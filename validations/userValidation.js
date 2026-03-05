@@ -20,6 +20,7 @@ export const signupSchema = Joi.object({
     otherwise: Joi.string().min(2).max(50).required(),
   }),
   role: Joi.string().valid("superadmin", "admin", "user").default("user"),
+  profileImage: Joi.string().uri()
 });
 
 // User Update

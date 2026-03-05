@@ -2,6 +2,7 @@ import express from "express";
 import userRoutes from "./routes/userRoutes.js";
 import companyRoutes from "./routes/companyRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import path from "path";
 
 const app = express()
 app.use(express.json());
@@ -23,5 +24,6 @@ app.use("/api/auth", userRoutes);
 app.use("/api/companies", companyRoutes);
 
 app.use(errorHandler);
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 export default app;

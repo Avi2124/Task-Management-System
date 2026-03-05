@@ -5,11 +5,10 @@ import { createCompany, deleteCompany, getAllCompanies, getCompanyById, updateCo
 
 const companyRoutes = express.Router();
 
-companyRoutes.post("/create", userMiddleware({auth: true, roles: ["superadmin"], body: companySchema}), createCompany);
-companyRoutes.get("/company/:companyId", userMiddleware({auth: true, body: companyCodeParamSchema}), getCompanyById);
-companyRoutes.get("/all-company", userMiddleware({auth: true, roles: ["superadmin"], body: companyCodeParamSchema}), getAllCompanies);
-companyRoutes.put("/company/:id", userMiddleware({auth: true, roles: ["superadmin"], params: companyMongoIdParamSchema, body: companyUpdateSchema}), updateCompany);
-companyRoutes.delete("/company/:id", userMiddleware({auth: true, roles: ["superadmin"], params: companyMongoIdParamSchema}), deleteCompany);
-
+companyRoutes.post("/create", userMiddleware({ auth: true, roles: ["superadmin"], body: companySchema }), createCompany);
+companyRoutes.get("/company/:companyId", userMiddleware({ auth: true, params: companyCodeParamSchema }), getCompanyById);
+companyRoutes.get("/all-company", userMiddleware({ auth: true, roles: ["superadmin"] }), getAllCompanies);
+companyRoutes.put("/company/:id", userMiddleware({ auth: true, roles: ["superadmin"], params: companyMongoIdParamSchema, body: companyUpdateSchema }), updateCompany);
+companyRoutes.delete("/company/:id", userMiddleware({ auth: true, roles: ["superadmin"], params: companyMongoIdParamSchema, }), deleteCompany);
 
 export default companyRoutes;
