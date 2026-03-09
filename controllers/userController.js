@@ -5,7 +5,7 @@ import * as userService from "../services/userService.js";
 
 // ---------- SIGNUP ----------
 export const signup = asyncHandler(async (req, res) => {
-  const result = await authService.signup(req.body, req.file,);
+  const result = await authService.signup(req.body, req.file);
   return sendResponse(res, {
     status: true,
     statusCode: 201,
@@ -118,6 +118,22 @@ export const logout = asyncHandler(async (req, res) => {
     statusCode: 200,
     message: "Logged out",
     data: null,
+    error: null,
+  });
+});
+
+export const registerAdmin = asyncHandler(async (req, res) => {
+  // const body = {
+  //   ...req.body,
+  //   company: JSON.parse(req.body.company),
+  //   admin: JSON.parse(req.body.admin),
+  // };
+  const result = await authService.registerAdmin(req.body, req.file);
+  return sendResponse(res, {
+    status: true,
+    statusCode: 201,
+    message: "Company + Admin created. Complete payment to activate.",
+    data: result,
     error: null,
   });
 });

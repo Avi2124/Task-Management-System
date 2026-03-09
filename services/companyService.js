@@ -8,6 +8,11 @@ const toCompanyDTO = (c) => ({
   address: c.address,
   website: c.website,
   companyId: c.companyId,
+  status: c.status,
+  plan: c.plan,
+  planStartAt: c.planStartAt,
+  planExpiresAt: c.planExpiresAt,
+  razorpay: c.razorpay
 });
 
 export const createCompany = async ({ name, description, address, website, companyId }) => {
@@ -20,7 +25,7 @@ export const createCompany = async ({ name, description, address, website, compa
     );
   }
 
-  const company = await Company.create({ name, description, address, website, companyId });
+  const company = await Company.create({ name, description, address, website, companyId , status: "pending_payment" });
 
   return { company: toCompanyDTO(company) };
 };

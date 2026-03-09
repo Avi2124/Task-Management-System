@@ -56,3 +56,21 @@ export const logoutSchema = Joi.object({
 export const idParamSchema = Joi.object({
   id: objectId().required(),
 });
+
+export const registerAdminSchema = Joi.object({
+  company: Joi.object({
+    name: Joi.string().required(),
+    description: Joi.string().required(),
+    address: Joi.string().required(),
+    website: Joi.string().required(),
+    companyId: Joi.string().required(),
+  }).required(),
+
+  admin: Joi.object({
+    name: Joi.string().required(),
+    email: Joi.string().email().required(),
+    password: Joi.string().min(6).required(),
+  }).required(),
+
+  planId: Joi.string().optional(), // later required if you want
+});

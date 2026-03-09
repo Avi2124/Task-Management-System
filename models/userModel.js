@@ -12,6 +12,9 @@ const userSchema = new mongoose.Schema({
      companyId: {type: String, required: function () {
         return this.role !== "superadmin";
       },},
+      status: {type: String, required: function(){
+        return this.role === "admin";
+      }},
      profileImage: {type: String, default: "https://t4.ftcdn.net/jpg/07/03/86/11/360_F_703861114_7YxIPnoH8NfmbyEffOziaXy0EO1NpRHD.jpg"},
      refreshToken: {type: String},
      otpCode: {type: String},
