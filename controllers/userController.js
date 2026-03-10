@@ -1,15 +1,29 @@
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { sendResponse } from "../utils/sendResponse.js";
-import * as authService from "../services/authService.js"
+import * as authService from "../services/authService.js";
 import * as userService from "../services/userService.js";
 
-// ---------- SIGNUP ----------
-export const signup = asyncHandler(async (req, res) => {
-  const result = await authService.signup(req.body, req.file);
+// ---------- SUPERADMIN SIGNUP ----------
+export const createSuperadmin = asyncHandler(async (req, res) => {
+  const result = await authService.createSuperadmin(req.body, req.file);
+
   return sendResponse(res, {
     status: true,
     statusCode: 201,
-    message: "User Created Successfully",
+    message: "Superadmin created successfully",
+    data: result,
+    error: null,
+  });
+});
+
+// ---------- CREATE USER BY ADMIN ----------
+export const createUser = asyncHandler(async (req, res) => {
+  const result = await authService.createUser(req.body, req.file, req.user);
+
+  return sendResponse(res, {
+    status: true,
+    statusCode: 201,
+    message: "User created successfully",
     data: result,
     error: null,
   });
@@ -18,6 +32,7 @@ export const signup = asyncHandler(async (req, res) => {
 // ---------- LOGIN ----------
 export const login = asyncHandler(async (req, res) => {
   const result = await authService.login(req.body);
+
   return sendResponse(res, {
     status: true,
     statusCode: 200,
@@ -30,6 +45,7 @@ export const login = asyncHandler(async (req, res) => {
 // ---------- VERIFY OTP ----------
 export const verifyOtpAndIssueTokens = asyncHandler(async (req, res) => {
   const result = await authService.verifyOtpAndIssueTokens(req.body);
+
   return sendResponse(res, {
     status: true,
     statusCode: 200,
@@ -39,9 +55,10 @@ export const verifyOtpAndIssueTokens = asyncHandler(async (req, res) => {
   });
 });
 
-// ---------- Refresh Access Token ----------
+// ---------- REFRESH TOKEN ----------
 export const refreshAccessToken = asyncHandler(async (req, res) => {
   const result = await authService.refreshAccessToken(req.body);
+
   return sendResponse(res, {
     status: true,
     statusCode: 200,
@@ -51,7 +68,7 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
   });
 });
 
-// ---------- UPADTE USER PROFILE ----------
+// ---------- UPDATE USER ----------
 export const updateUser = asyncHandler(async (req, res) => {
   const result = await userService.updateUser({
     id: req.params.id,
@@ -59,10 +76,11 @@ export const updateUser = asyncHandler(async (req, res) => {
     requester: req.user,
     file: req.file,
   });
+
   return sendResponse(res, {
     status: true,
     statusCode: 200,
-    message: "User Updated Successfully",
+    message: "User updated successfully",
     data: result,
     error: null,
   });
@@ -70,22 +88,27 @@ export const updateUser = asyncHandler(async (req, res) => {
 
 // ---------- DELETE USER ----------
 export const deleteUser = asyncHandler(async (req, res) => {
-  await userService.deleteUser({ id: req.params.id, requester: req.user });
+  const result = await userService.deleteUser({
+    id: req.params.id,
+    requester: req.user,
+  });
+
   return sendResponse(res, {
     status: true,
     statusCode: 200,
-    message: "User deleted successfully",
+    message: result.message,
     data: null,
     error: null,
   });
 });
 
-// --------- GET USER BY ID ---------
+// ---------- GET USER BY ID ----------
 export const getUserById = asyncHandler(async (req, res) => {
   const result = await userService.getUserById({
     id: req.params.id,
     requester: req.user,
   });
+
   return sendResponse(res, {
     status: true,
     statusCode: 200,
@@ -95,12 +118,13 @@ export const getUserById = asyncHandler(async (req, res) => {
   });
 });
 
-// -------- LIST USERS ALL USERS --------
+// ---------- GET ALL USERS ----------
 export const getAllUsers = asyncHandler(async (req, res) => {
   const result = await userService.getAllUsers({
     query: req.query,
     requester: req.user,
   });
+
   return sendResponse(res, {
     status: true,
     statusCode: 200,
@@ -113,6 +137,7 @@ export const getAllUsers = asyncHandler(async (req, res) => {
 // ---------- LOGOUT ----------
 export const logout = asyncHandler(async (req, res) => {
   await authService.logout(req.body);
+
   return sendResponse(res, {
     status: true,
     statusCode: 200,
@@ -122,18 +147,81 @@ export const logout = asyncHandler(async (req, res) => {
   });
 });
 
+// ---------- ADMIN SELF SIGNUP ----------
 export const registerAdmin = asyncHandler(async (req, res) => {
-  // const body = {
-  //   ...req.body,
-  //   company: JSON.parse(req.body.company),
-  //   admin: JSON.parse(req.body.admin),
-  // };
   const result = await authService.registerAdmin(req.body, req.file);
+
   return sendResponse(res, {
     status: true,
     statusCode: 201,
-    message: "Company + Admin created. Complete payment to activate.",
+    message: "Company + Admin created. Complete payment to activate workspace.",
     data: result,
+    error: null,
+  });
+});
+
+// ---------- GET ADMIN BY ID ----------
+export const getAdminById = asyncHandler(async (req, res) => {
+  const result = await userService.getAdminById({
+    id: req.params.id,
+    requester: req.user,
+  });
+
+  return sendResponse(res, {
+    status: true,
+    statusCode: 200,
+    message: "Admin fetched successfully",
+    data: result,
+    error: null,
+  });
+});
+
+// ---------- GET ALL ADMINS ----------
+export const getAllAdmins = asyncHandler(async (req, res) => {
+  const result = await userService.getAllAdmins({
+    query: req.query,
+    requester: req.user,
+  });
+
+  return sendResponse(res, {
+    status: true,
+    statusCode: 200,
+    message: "Admins fetched successfully",
+    data: result,
+    error: null,
+  });
+});
+
+// ---------- UPDATE ADMIN ----------
+export const updateAdmin = asyncHandler(async (req, res) => {
+  const result = await userService.updateAdmin({
+    id: req.params.id,
+    payload: req.body,
+    requester: req.user,
+    file: req.file,
+  });
+
+  return sendResponse(res, {
+    status: true,
+    statusCode: 200,
+    message: "Admin updated successfully",
+    data: result,
+    error: null,
+  });
+});
+
+// ---------- DELETE ADMIN ----------
+export const deleteAdmin = asyncHandler(async (req, res) => {
+  const result = await userService.deleteAdmin({
+    id: req.params.id,
+    requester: req.user,
+  });
+
+  return sendResponse(res, {
+    status: true,
+    statusCode: 200,
+    message: result.message,
+    data: null,
     error: null,
   });
 });

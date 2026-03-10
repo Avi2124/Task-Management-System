@@ -1,168 +1,207 @@
-import mongoose from "mongoose";
-import Company from "../models/companyModel.js";
-import { Plan } from "../models/planModel.js";
 import { Project } from "../models/projectModel.js";
+import { User } from "../models/userModel.js";
+import Company from "../models/companyModel.js";
 import { AppError } from "../utils/AppError.js";
 
-const ensureCompanyActive = async (companyId) => {
-  const company = await Company.findById(companyId);
+const sanitizeProject = (project) => ({
+  id: project._id,
+  name: project.name,
+  shortCode: project.shortCode,
+  description: project.description,
+  company: project.company,
+  createdBy: project.createdBy,
+  members: project.members,
+  isActive: project.isActive,
+  isDeleted: project.isDeleted,
+  createdAt: project.createdAt,
+  updatedAt: project.updatedAt,
+});
+
+const ensureAdminCompanyAndPlan = async (companyId) => {
+  const company = await Company.findById(companyId).populate("plan");
   if (!company) {
     throw new AppError("Company not found", 404, "COMPANY_NOT_FOUND");
   }
+
   if (company.status !== "active") {
-    throw new AppError(
-      "Company subscription is not active",
-      403,
-      "COMPANY_NOT_ACTIVE"
-    );
+    throw new AppError("Company subscription not active", 403, "COMPANY_NOT_ACTIVE");
   }
+
   if (company.planExpiresAt && company.planExpiresAt < new Date()) {
     throw new AppError("Plan expired", 403, "PLAN_EXPIRED");
   }
+
+  if (!company.plan || !company.plan.isActive) {
+    throw new AppError("Plan not found", 404, "PLAN_NOT_FOUND");
+  }
+
   return company;
 };
 
-const ensureProjectLimit = async (company) => {
-  if (!company.plan) {
-    throw new AppError("Plan not attached", 400, "PLAN_NOT_ATTACHED");
+export const createProject = async ({ payload, requester }) => {
+  if (!requester?.id) throw new AppError("Unauthorized", 401, "UNAUTHORIZED");
+
+  const adminUser = await User.findById(requester.id);
+  if (!adminUser || adminUser.role !== "admin") {
+    throw new AppError("Only admin can create project", 403, "FORBIDDEN");
   }
 
-  const plan = await Plan.findById(company.plan);
-  if (!plan || !plan.isActive) {
-    throw new AppError("Plan not found", 400, "PLAN_NOT_FOUND");
-  }
+  const company = await ensureAdminCompanyAndPlan(adminUser.company);
 
-  const count = await Project.countDocuments({
-    company: company._id,
-    isDeleted: false
+  const currentProjects = await Project.countDocuments({
+    company: adminUser.company,
+    isDeleted: false,
   });
 
-  if (plan.projectLimit !== -1 && count >= plan.projectLimit) {
+  if (
+    company.plan.projectLimit !== -1 &&
+    currentProjects >= company.plan.projectLimit
+  ) {
     throw new AppError("Project limit reached", 400, "PROJECT_LIMIT_REACHED");
   }
-};
 
-const normalizeMembers = (members) => {
-  if (members === undefined) {
-    return [];
+  const { name, shortCode, description = "", members = [] } = payload;
+
+  const existingShortCode = await Project.findOne({
+    company: adminUser.company,
+    shortCode: shortCode.toUpperCase(),
+    isDeleted: false,
+  });
+
+  if (existingShortCode) {
+    throw new AppError("Project shortCode already exists", 409, "SHORTCODE_EXISTS");
   }
 
-  if (!Array.isArray(members)) {
-    throw new AppError("Members must be an array", 400, "INVALID_MEMBERS");
+  const validMembers = [];
+  if (members.length) {
+    const users = await User.find({
+      _id: { $in: members },
+      company: adminUser.company,
+      role: "user",
+    });
+
+    if (users.length !== members.length) {
+      throw new AppError("Some users do not belong to this company", 400, "INVALID_USERS");
+    }
+
+    validMembers.push(...users.map((u) => u._id));
   }
 
-  const uniqueMembers = [];
-  const seen = new Set();
+  const project = await Project.create({
+    name,
+    shortCode: shortCode.toUpperCase(),
+    description,
+    company: adminUser.company,
+    createdBy: adminUser._id,
+    members: validMembers,
+  });
 
-  for (const memberId of members) {
-    const value = String(memberId);
-
-    if (!mongoose.Types.ObjectId.isValid(value)) {
-      throw new AppError("Invalid member id", 400, "INVALID_MEMBER_ID");
-    }
-
-    if (!seen.has(value)) {
-      seen.add(value);
-      uniqueMembers.push(memberId);
-    }
-  }
-
-  return uniqueMembers;
+  return { project: sanitizeProject(project) };
 };
 
-const ensureAdminWithCompany = (requester) => {
-    const requesterId = requester?._id || requester?.id;
-    if(!requesterId){
-        throw new AppError("Unauthorized", 401, "UNAUTHORIZED");
-    }
-    if(requester.role !== "admin"){
-        throw new AppError("Only admin can access projects", 403, "FORBIDDEN");
-    }
-    if(!requester.company){
-        throw new AppError("Company not assigned", 400, "NO_COMPANY");
-    }
-    return{
-        requesterId,
-        companyId: requester.company,
-    };
-};
-
-// Get all projects
 export const getAllProjects = async ({ query, requester }) => {
-  const { companyId } = ensureAdminWithCompany(requester);
+  if (!requester?.id) throw new AppError("Unauthorized", 401, "UNAUTHORIZED");
 
-  const page = Math.max(parseInt(query.page) || 1, 1);
-  const limit = Math.max(parseInt(query.limit) || 10, 1);
-  const skip = (page - 1) * limit;
+  const user = await User.findById(requester.id);
+  if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
-  const search = query.search ? String(query.search).trim() : "";
-  const sortBy = query.sortBy || "createdAt";
-  const sortOrder = query.sortOrder === "asc" ? 1 : -1;
+  let {
+    page = 1,
+    limit = 10,
+    search = "",
+    sortKey = "createdAt",
+    sortOrder = "desc",
+  } = query;
 
-  const filter = {
-    company: companyId,
+  page = Number(page) || 1;
+  limit = Number(limit) || 10;
+
+  const match = {
+    company: user.company,
     isDeleted: false,
   };
 
-  if (search) {
-    filter.name = { $regex: search, $options: "i" };
+  if (user.role === "user") {
+    match.members = user._id;
   }
 
-  const [projects, total] = await Promise.all([
-    Project.find(filter)
-      .sort({ [sortBy]: sortOrder })
-      .skip(skip)
-      .limit(limit)
-      .populate("createdBy", "name email")
-      .populate("members", "name email"),
-    Project.countDocuments(filter),
-  ]);
+  const pipeline = [{ $match: match }];
+
+  if (search) {
+    const regex = new RegExp(search, "i");
+    pipeline.push({
+      $match: {
+        $or: [
+          { name: { $regex: regex } },
+          { shortCode: { $regex: regex } },
+        ],
+      },
+    });
+  }
+
+  const sortDir = sortOrder === "asc" ? 1 : -1;
+  pipeline.push({ $sort: { [sortKey]: sortDir, _id: -1 } });
+
+  const skip = (page - 1) * limit;
+  pipeline.push({
+    $facet: {
+      data: [
+        { $skip: skip },
+        { $limit: limit },
+      ],
+      total: [{ $count: "count" }],
+    },
+  });
+
+  const result = await Project.aggregate(pipeline);
+  const data = result[0]?.data || [];
+  const total = result[0]?.total?.[0]?.count || 0;
 
   return {
-    projects,
-    pagination: {
-      total,
+    projects: data,
+    meta: {
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
     },
   };
 };
 
-// Get Project By Id
-export const getProjectById = async ({ projectId, requester }) => {
-  const { companyId } = ensureAdminWithCompany(requester);
+export const getProjectById = async ({ id, requester }) => {
+  const user = await User.findById(requester.id);
+  if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
-  if (!mongoose.Types.ObjectId.isValid(projectId)) {
-    throw new AppError("Invalid project id", 400, "INVALID_PROJECT_ID");
+  const filter = {
+    _id: id,
+    company: user.company,
+    isDeleted: false,
+  };
+
+  if (user.role === "user") {
+    filter.members = user._id;
   }
 
-  const project = await Project.findOne({
-    _id: projectId,
-    company: companyId,
-    isDeleted: false,
-  })
-    .populate("createdBy", "name email")
-    .populate("members", "name email");
+  const project = await Project.findOne(filter)
+    .populate("members", "name email role")
+    .populate("createdBy", "name email role");
 
   if (!project) {
     throw new AppError("Project not found", 404, "PROJECT_NOT_FOUND");
   }
 
-  return { project };
+  return { project: sanitizeProject(project) };
 };
 
-// Update Project
-export const updateProject = async ({ projectId, payload, requester }) => {
-  const { companyId } = ensureAdminWithCompany(requester);
-
-  if (!mongoose.Types.ObjectId.isValid(projectId)) {
-    throw new AppError("Invalid project id", 400, "INVALID_PROJECT_ID");
+export const updateProject = async ({ id, payload, requester }) => {
+  const adminUser = await User.findById(requester.id);
+  if (!adminUser || adminUser.role !== "admin") {
+    throw new AppError("Only admin can update project", 403, "FORBIDDEN");
   }
 
   const project = await Project.findOne({
-    _id: projectId,
-    company: companyId,
+    _id: id,
+    company: adminUser.company,
     isDeleted: false,
   });
 
@@ -170,50 +209,55 @@ export const updateProject = async ({ projectId, payload, requester }) => {
     throw new AppError("Project not found", 404, "PROJECT_NOT_FOUND");
   }
 
-  const { name, description, members } = payload;
+  const { name, shortCode, description, members, isActive } = payload;
 
-  if (name !== undefined) {
-    if (!String(name).trim()) {
-      throw new AppError("Project name is required", 400, "NAME_REQUIRED");
+  if (name) project.name = name;
+  if (description !== undefined) project.description = description;
+  if (isActive !== undefined) project.isActive = isActive;
+
+  if (shortCode) {
+    const existing = await Project.findOne({
+      _id: { $ne: project._id },
+      company: adminUser.company,
+      shortCode: shortCode.toUpperCase(),
+      isDeleted: false,
+    });
+
+    if (existing) {
+      throw new AppError("Project shortCode already exists", 409, "SHORTCODE_EXISTS");
     }
-    project.name = String(name).trim();
+
+    project.shortCode = shortCode.toUpperCase();
   }
 
-  if (description !== undefined) {
-    project.description = String(description).trim();
-  }
+  if (members) {
+    const users = await User.find({
+      _id: { $in: members },
+      company: adminUser.company,
+      role: "user",
+    });
 
-  if (members !== undefined) {
-    project.members = normalizeMembers(members);
-  }
-
-  try {
-    await project.save();
-  } catch (error) {
-    if (error?.code === 11000) {
-      throw new AppError(
-        "Project with this name already exists",
-        400,
-        "PROJECT_ALREADY_EXISTS"
-      );
+    if (users.length !== members.length) {
+      throw new AppError("Some users do not belong to this company", 400, "INVALID_USERS");
     }
-    throw error;
+
+    project.members = users.map((u) => u._id);
   }
 
-  return { project };
+  await project.save();
+
+  return { project: sanitizeProject(project) };
 };
 
-// Delete Project
-export const deleteProject = async ({ projectId, requester }) => {
-  const { companyId } = ensureAdminWithCompany(requester);
-
-  if (!mongoose.Types.ObjectId.isValid(projectId)) {
-    throw new AppError("Invalid project id", 400, "INVALID_PROJECT_ID");
+export const deleteProject = async ({ id, requester }) => {
+  const adminUser = await User.findById(requester.id);
+  if (!adminUser || adminUser.role !== "admin") {
+    throw new AppError("Only admin can delete project", 403, "FORBIDDEN");
   }
 
   const project = await Project.findOne({
-    _id: projectId,
-    company: companyId,
+    _id: id,
+    company: adminUser.company,
     isDeleted: false,
   });
 
@@ -223,76 +267,41 @@ export const deleteProject = async ({ projectId, requester }) => {
 
   project.isDeleted = true;
   project.isActive = false;
-
   await project.save();
 
-  return {
-    project: {
-      id: project._id,
-      name: project.name
-    },
-  };
+  return { message: "Project deleted successfully" };
 };
 
-
-
-export const createProject = async ({ payload, requester }) => {
-  const requesterId = requester?._id || requester?.id;
-
-  if (!requesterId) {
-    throw new AppError("Unauthorized", 401, "UNAUTHORIZED");
+export const assignMembersToProject = async ({ id, payload, requester }) => {
+  const adminUser = await User.findById(requester.id);
+  if (!adminUser || adminUser.role !== "admin") {
+    throw new AppError("Only admin can assign users to project", 403, "FORBIDDEN");
   }
 
-  if (!requester?.role || requester.role !== "admin") {
-    throw new AppError("Only admin can create projects", 403, "FORBIDDEN");
+  const project = await Project.findOne({
+    _id: id,
+    company: adminUser.company,
+    isDeleted: false,
+  });
+
+  if (!project) {
+    throw new AppError("Project not found", 404, "PROJECT_NOT_FOUND");
   }
 
-  const companyId = requester.company;
-  if (!companyId) {
-    throw new AppError("Company not assigned", 400, "NO_COMPANY");
+  const { members } = payload;
+
+  const users = await User.find({
+    _id: { $in: members },
+    company: adminUser.company,
+    role: "user",
+  });
+
+  if (users.length !== members.length) {
+    throw new AppError("Some users do not belong to this company", 400, "INVALID_USERS");
   }
 
-  const company = await ensureCompanyActive(companyId);
-  await ensureProjectLimit(company);
+  project.members = [...new Set(users.map((u) => u._id.toString()))];
+  await project.save();
 
-  const { name, description = "", members } = payload;
-
-  if (!name || !String(name).trim()) {
-    throw new AppError("Project name is required", 400, "NAME_REQUIRED");
-  }
-
-  const normalizedMembers = normalizeMembers(members);
-
-  try {
-    const project = await Project.create({
-      company: company._id,
-      name: String(name).trim(),
-      description: String(description).trim(),
-      createdBy: requesterId,
-      members: normalizedMembers
-    });
-
-    return {
-      project: {
-        id: project._id,
-        name: project.name,
-        description: project.description,
-        company: project.company,
-        createdBy: project.createdBy,
-        members: project.members,
-        isActive: project.isActive,
-        isDeleted: project.isDeleted,
-        createdAt: project.createdAt
-      }
-    };
-  } catch (error) {
-    if (error?.code === 11000) {
-      throw new AppError(
-        "Project with this name already exists",
-        400,
-        "PROJECT_ALREADY_EXISTS"
-      );
-    }
-    throw error;
-  }
+  return { project: sanitizeProject(project) };
 };

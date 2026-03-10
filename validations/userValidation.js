@@ -9,34 +9,46 @@ const objectId = () =>
     return value;
   }, "ObjectId validation");
 
-// User registration
-export const signupSchema = Joi.object({
+// superadmin self signup
+export const createSuperadminSchema = Joi.object({
   name: Joi.string().min(2).max(50).required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(6).max(16).required(),
-  companyId: Joi.when("role", {
-    is: "superadmin",
-    then: Joi.string().optional().allow(null, ""),
-    otherwise: Joi.string().min(2).max(50).required(),
-  }),
-  role: Joi.string().valid("superadmin", "admin", "user").default("user"),
-  profileImage: Joi.string().uri()
+  profileImage: Joi.string().uri().optional(),
 });
 
-// User Update
+// admin creates user
+export const createUserSchema = Joi.object({
+  name: Joi.string().min(2).max(50).required(),
+  email: Joi.string().email().required(),
+  password: Joi.string().min(6).max(16).required(),
+  project: objectId().optional().allow(null, ""),
+  profileImage: Joi.string().uri().optional(),
+});
+
+// update admin
+export const updateAdminSchema = Joi.object({
+  name: Joi.string().min(2).max(50),
+  password: Joi.string().min(6).max(16),
+  status: Joi.string().valid("active", "inactive"),
+  profileImage: Joi.string().uri(),
+}).min(1);
+
+// update user
 export const updateUserSchema = Joi.object({
   name: Joi.string().min(2).max(50),
   password: Joi.string().min(6).max(16),
-  profileImage: Joi.string().uri()
+  profileImage: Joi.string().uri(),
+  project: objectId().optional().allow(null, ""),
 }).min(1);
 
 // login
 export const loginSchema = Joi.object({
   email: Joi.string().email().required(),
-  password: Joi.string().required()
+  password: Joi.string().required(),
 });
 
-// login OTP validation
+// verify otp
 export const verifyOtpSchema = Joi.object({
   email: Joi.string().email().required(),
   otp: Joi.string().length(6).required(),
@@ -52,11 +64,12 @@ export const logoutSchema = Joi.object({
   refreshToken: Joi.string().required(),
 });
 
-// params with id
+// params
 export const idParamSchema = Joi.object({
   id: objectId().required(),
 });
 
+// admin self signup with company + plan
 export const registerAdminSchema = Joi.object({
   company: Joi.object({
     name: Joi.string().required(),
@@ -72,5 +85,5 @@ export const registerAdminSchema = Joi.object({
     password: Joi.string().min(6).required(),
   }).required(),
 
-  planId: Joi.string().optional(), // later required if you want
+  planId: objectId().required(),
 });

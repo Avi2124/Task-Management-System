@@ -5,6 +5,7 @@ import { User } from "../models/userModel.js";
 import { Plan } from "../models/planModel.js";
 import { AppError } from "../utils/AppError.js";
 import Company from "../models/companyModel.js";
+import { Project } from "../models/projectModel.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/token.js";
 import { sendOtpEmail } from "../config/mailer.js";
 import cloudinary from "../config/cloudinary.js";
@@ -12,53 +13,147 @@ import fs from "fs/promises";
 
 const OTP_EXP_MINUTES = Number(process.env.OTP_EXP_MINUTES || 5);
 
-// Signup
-export const signup = async (payload = {}, file) => {
-  const { name, email, password, role, companyId } = payload;
+const uploadProfileImage = async (file) => {
+  if (!file) return null;
 
-  if (role === "admin") {
+  const result = await cloudinary.uploader.upload(file.path, {
+    folder: "task-management/profile-images",
+    resource_type: "image",
+  });
+
+  await fs.unlink(file.path).catch(() => {});
+  return result.secure_url;
+};
+
+const ensureActiveCompanyAndPlan = async (companyId) => {
+  const company = await Company.findById(companyId).populate("plan");
+
+  if (!company) {
+    throw new AppError("Company not found", 400, "COMPANY_NOT_FOUND");
+  }
+
+  if (company.status !== "active") {
     throw new AppError(
-      "Use /api/auth/register-admin to create company admin",
-      400,
-      "USE_REGISTER_ADMIN"
+      "Company subscription not active",
+      403,
+      "COMPANY_NOT_ACTIVE",
     );
   }
+
+  if (company.planExpiresAt && company.planExpiresAt < new Date()) {
+    throw new AppError("Plan expired", 403, "PLAN_EXPIRED");
+  }
+
+  if (!company.plan || !company.plan.isActive) {
+    throw new AppError("Plan not found", 400, "PLAN_NOT_FOUND");
+  }
+
+  return company;
+};
+
+// SUPERADMIN SELF SIGNUP
+export const createSuperadmin = async (payload = {}, file) => {
+  const { name, email, password } = payload;
+
+  //   const existing = await User.findOne({ email });
+  //   if (existing) {
+  //     throw new AppError("Email already registered", 409, "EMAIL_EXISTS");
+  //   }
+
+  const existingSuperadmin = await User.findOne({ role: "superadmin" });
+  if (existingSuperadmin) {
+    throw new AppError("Superadmin already exists. ");
+  }
+
+  const profileImageUrl = await uploadProfileImage(file);
+
+  const superadmin = await User.create({
+    name,
+    email,
+    password,
+    role: "superadmin",
+    status: "active",
+    ...(profileImageUrl && { profileImage: profileImageUrl }),
+  });
+
+  return {
+    superadmin: {
+      id: superadmin._id,
+      name: superadmin.name,
+      email: superadmin.email,
+      role: superadmin.role,
+      status: superadmin.status,
+      profileImage: superadmin.profileImage,
+    },
+  };
+};
+
+// ADMIN CREATES USER
+export const createUser = async (payload = {}, file, requester) => {
+  if (!requester?.id) {
+    throw new AppError("Unauthorized", 401, "UNAUTHORIZED");
+  }
+
+  const adminUser = await User.findById(requester.id);
+  if (!adminUser || adminUser.role !== "admin") {
+    throw new AppError("Only admin can create users", 403, "FORBIDDEN");
+  }
+
+  if (!adminUser.company || !adminUser.companyId) {
+    throw new AppError(
+      "Admin does not have a company assigned",
+      400,
+      "ADMIN_NO_COMPANY",
+    );
+  }
+
+  const company = await ensureActiveCompanyAndPlan(adminUser.company);
+  const { name, email, password, project } = payload;
 
   const existing = await User.findOne({ email });
   if (existing) {
     throw new AppError("Email already registered", 409, "EMAIL_EXISTS");
   }
 
-  let companyObjectId = null;
-  let finalCompanyId = null;
+  const currentUsers = await User.countDocuments({
+    company: adminUser.company,
+    role: "user",
+  });
 
-  if (role !== "superadmin") {
-    const company = await Company.findOne({ companyId });
-    if (!company) {
-      throw new AppError("Company not found", 400, "COMPANY_NOT_FOUND");
-    }
-
-    companyObjectId = company._id;
-    finalCompanyId = company.companyId;
+  if (company.plan.userLimit !== -1 && currentUsers >= company.plan.userLimit) {
+    throw new AppError("User limit reached", 400, "USER_LIMIT_REACHED");
   }
 
-  let profileImageUrl;
-  if (file) {
-    const result = await cloudinary.uploader.upload(file.path, {
-      folder: "task-management/profile-images",
-      resource_type: "image",
+  let projectId = null;
+  if (project) {
+    const projectDoc = await Project.findOne({
+      _id: project,
+      company: adminUser.company,
+      isDeleted: false,
+      isActive: true,
     });
-    profileImageUrl = result.secure_url;
-    await fs.unlink(file.path).catch(() => {});
+
+    if (!projectDoc) {
+      throw new AppError(
+        "Project not found for this company",
+        400,
+        "PROJECT_NOT_FOUND",
+      );
+    }
+    projectId = projectDoc._id;
   }
+
+  const profileImageUrl = await uploadProfileImage(file);
 
   const user = await User.create({
     name,
     email,
     password,
-    role,
-    company: companyObjectId,
-    companyId: finalCompanyId,
+    role: "user",
+    company: adminUser.company,
+    companyId: adminUser.companyId,
+    project: projectId,
+    status: "active",
     ...(profileImageUrl && { profileImage: profileImageUrl }),
   });
 
@@ -70,11 +165,13 @@ export const signup = async (payload = {}, file) => {
       role: user.role,
       company: user.company,
       companyId: user.companyId,
+      project: user.project,
       profileImage: user.profileImage,
     },
   };
 };
 
+// ADMIN SELF SIGNUP WITH COMPANY + PAYMENT
 export const registerAdmin = async (payload = {}, file) => {
   const { company, admin, planId } = payload;
 
@@ -82,33 +179,27 @@ export const registerAdmin = async (payload = {}, file) => {
     throw new AppError(
       "Company and Admin details are required",
       400,
-      "INVALID_PAYLOAD"
+      "INVALID_PAYLOAD",
     );
   }
 
-  if (!planId) {
-    throw new AppError("Plan is required", 400, "PLAN_REQUIRED");
-  }
-
-  // check admin email unique
-  const existingUser = await User.findOne({ email: admin.email });
-  if (existingUser) {
-    throw new AppError("Email already registered", 409, "EMAIL_EXISTS");
-  }
-
-  // check companyId unique
-  const existingCompany = await Company.findOne({ companyId: company.companyId });
-  if (existingCompany) {
-    throw new AppError("companyId already exists", 409, "COMPANY_ID_EXISTS");
-  }
-
-  // validate selected plan
   const selectedPlan = await Plan.findById(planId);
   if (!selectedPlan || !selectedPlan.isActive) {
     throw new AppError("Plan not found", 404, "PLAN_NOT_FOUND");
   }
 
-  // create company as pending
+  const existingUser = await User.findOne({ email: admin.email });
+  if (existingUser) {
+    throw new AppError("Email already registered", 409, "EMAIL_EXISTS");
+  }
+
+  const existingCompany = await Company.findOne({
+    companyId: company.companyId,
+  });
+  if (existingCompany) {
+    throw new AppError("companyId already exists", 409, "COMPANY_ID_EXISTS");
+  }
+
   const newCompany = await Company.create({
     name: company.name,
     description: company.description,
@@ -121,18 +212,8 @@ export const registerAdmin = async (payload = {}, file) => {
     planExpiresAt: null,
   });
 
-  // upload image (optional)
-  let profileImageUrl;
-  if (file) {
-    const result = await cloudinary.uploader.upload(file.path, {
-      folder: "task-management/profile-images",
-      resource_type: "image",
-    });
-    profileImageUrl = result.secure_url;
-    await fs.unlink(file.path).catch(() => {});
-  }
+  const profileImageUrl = await uploadProfileImage(file);
 
-  // create admin as inactive until payment
   const newAdmin = await User.create({
     name: admin.name,
     email: admin.email,
@@ -156,7 +237,7 @@ export const registerAdmin = async (payload = {}, file) => {
               name: selectedPlan.name,
               description: `Subscription for ${newCompany.name}`,
             },
-            unit_amount: Number(selectedPlan.price) * 100,
+            unit_amount: Math.round(Number(selectedPlan.price) * 100),
           },
           quantity: 1,
         },
@@ -166,19 +247,18 @@ export const registerAdmin = async (payload = {}, file) => {
         adminId: newAdmin._id.toString(),
         planId: selectedPlan._id.toString(),
       },
-
-      // backend-only project: keep placeholder URLs
-      // user can still pay using session.url
-      success_url: process.env.STRIPE_SUCCESS_URL || "https://example.com/success",
-      cancel_url: process.env.STRIPE_CANCEL_URL || "https://example.com/cancel",
+      success_url:
+        process.env.STRIPE_SUCCESS_URL ||
+        "http://localhost:1312/payment-success",
+      cancel_url:
+        process.env.STRIPE_CANCEL_URL || "http://localhost:1312/payment-failed",
     });
 
-    // save stripe session details in company
     newCompany.stripe = {
       checkout_session_id: session.id,
       checkout_url: session.url,
-      payment_intent_id: null,
-      status: "created",
+      payment_intent_id: session.payment_intent || null,
+      status: session.payment_status || "created",
     };
 
     await newCompany.save();
@@ -205,19 +285,18 @@ export const registerAdmin = async (payload = {}, file) => {
       },
     };
   } catch (error) {
-    // rollback if stripe session creation fails
     await User.findByIdAndDelete(newAdmin._id).catch(() => {});
     await Company.findByIdAndDelete(newCompany._id).catch(() => {});
 
     throw new AppError(
       error.message || "Failed to create Stripe checkout session",
       500,
-      "STRIPE_SESSION_CREATE_FAILED"
+      "STRIPE_SESSION_CREATE_FAILED",
     );
   }
 };
 
-// Login
+// LOGIN
 export const login = async ({ email, password }) => {
   const user = await User.findOne({ email });
   if (!user) {
@@ -233,27 +312,12 @@ export const login = async ({ email, password }) => {
     throw new AppError(
       "User is not active. Complete payment.",
       403,
-      "USER_INACTIVE"
+      "USER_INACTIVE",
     );
   }
 
   if (user.role !== "superadmin") {
-    const company = await Company.findById(user.company);
-    if (!company) {
-      throw new AppError("Company not found", 400, "COMPANY_NOT_FOUND");
-    }
-
-    if (company.status !== "active") {
-      throw new AppError(
-        "Company subscription not active",
-        403,
-        "COMPANY_NOT_ACTIVE"
-      );
-    }
-
-    if (company.planExpiresAt && company.planExpiresAt < new Date()) {
-      throw new AppError("Plan expired", 403, "PLAN_EXPIRED");
-    }
+    await ensureActiveCompanyAndPlan(user.company);
   }
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -268,7 +332,6 @@ export const login = async ({ email, password }) => {
   return { email: user.email };
 };
 
-// Verify OTP and Issue Tokens
 export const verifyOtpAndIssueTokens = async ({ email, otp }) => {
   const user = await User.findOne({ email });
   if (!user) {
@@ -279,7 +342,7 @@ export const verifyOtpAndIssueTokens = async ({ email, otp }) => {
     throw new AppError(
       "OTP expired or not found. Please login again.",
       400,
-      "OTP_EXPIRED"
+      "OTP_EXPIRED",
     );
   }
 
@@ -312,13 +375,12 @@ export const verifyOtpAndIssueTokens = async ({ email, otp }) => {
   };
 };
 
-// RefreshAccessToken
 export const refreshAccessToken = async ({ refreshToken }) => {
   if (!refreshToken) {
     throw new AppError(
       "Refresh token is required",
       400,
-      "REFRESH_TOKEN_REQUIRED"
+      "REFRESH_TOKEN_REQUIRED",
     );
   }
 
@@ -326,20 +388,12 @@ export const refreshAccessToken = async ({ refreshToken }) => {
   try {
     decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
   } catch {
-    throw new AppError(
-      "Invalid refresh token",
-      401,
-      "INVALID_REFRESH_TOKEN"
-    );
+    throw new AppError("Invalid refresh token", 401, "INVALID_REFRESH_TOKEN");
   }
 
   const user = await User.findById(decoded._id);
   if (!user || user.refreshToken !== refreshToken) {
-    throw new AppError(
-      "Refresh token not valid",
-      401,
-      "INVALID_REFRESH_TOKEN"
-    );
+    throw new AppError("Refresh token not valid", 401, "INVALID_REFRESH_TOKEN");
   }
 
   const newAccessToken = generateAccessToken(user);
@@ -359,7 +413,7 @@ export const logout = async ({ refreshToken }) => {
     throw new AppError(
       "Refresh token is required to logout",
       400,
-      "NO_REFRESH_TOKEN"
+      "NO_REFRESH_TOKEN",
     );
   }
 
@@ -370,7 +424,7 @@ export const logout = async ({ refreshToken }) => {
     throw new AppError(
       "Invalid or expired refresh token during logout",
       400,
-      "INVALID_REFRESH_TOKEN"
+      "INVALID_REFRESH_TOKEN",
     );
   }
 

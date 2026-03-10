@@ -7,19 +7,22 @@ import planRoutes from "./routes/planRoutes.js";
 import projectRoutes from "./routes/projectRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 
-const app = express()
-app.use("/api/webhooks/stripe", express.raw({type: "application/json"}), (req, res, next) => {
-    req.rawBody = req.body.toString("utf-8");
-    next();
-});
-app.use(express.json());
-app.use((req, res, next) => {
-    console.log(`${req.method} ${req.url}`);
-    next();
+const app = express();
+
+app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }), (req, res, next) => {
+  req.rawBody = req.body.toString("utf-8");
+  next();
 });
 
-app.get('/', (req, res) => {
-    res.send("Task Management API");
+app.use(express.json());
+
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`);
+  next();
+});
+
+app.get("/", (req, res) => {
+  res.send("Task Management API");
 });
 
 app.get("/payment-success", (req, res) => {
@@ -37,15 +40,20 @@ app.get("/payment-failed", (req, res) => {
 });
 
 app.use((err, req, res, next) => {
-    console.log("Unhandled erorr:", err);
-    res.status(500).json({status: false, message: "Something went wrong", data: null, error: {details: err.message}});
+  console.log("Unhandled erorr:", err);
+  res.status(500).json({
+    status: false,
+    message: "Something went wrong",
+    data: null,
+    error: { details: err.message },
+  });
 });
 
 app.use("/api/auth", userRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/projects", projectRoutes);
-app.use("/api/plans", planRoutes)
-app.use("/api/webhooks", webhookRoutes)
+app.use("/api/plans", planRoutes);
+app.use("/api/webhooks/stripe", webhookRoutes);
 app.use(errorHandler);
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 

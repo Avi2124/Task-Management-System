@@ -18,7 +18,7 @@ export const createPlanSchema = Joi.object({
   price: Joi.number().min(0).required(),
   durationDays: Joi.number().min(0).required(),
   projectLimit: Joi.number().min(-1).required(),
-  userLimit: Joi.number().min(0).required()
+  userLimit: Joi.number().min(-1).required()
 });
 
 export const updatePlanSchema = Joi.object({

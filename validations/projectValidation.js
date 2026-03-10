@@ -9,18 +9,21 @@ const objectId = () =>
     return value;
   }, "ObjectId validation");
 
-export const idParamSchema = Joi.object({
-  id: objectId().required(),
-});
-
 export const createProjectSchema = Joi.object({
   name: Joi.string().trim().min(2).max(100).required(),
+  shortCode: Joi.string().min(2).max(10).required(),
   description: Joi.string().trim().allow("").optional(),
-  members: Joi.array().items(Joi.string().hex().length(24)).optional()
+  members: Joi.array().items(objectId()).optional()
 });
 
 export const updateProjectSchema = Joi.object({
-  name: Joi.string().trim().min(2).max(100).optional(),
-  description: Joi.string().trim().allow("").optional(),
-  members: Joi.array().items(Joi.string().hex().length(24)).optional()
+  name: Joi.string().min(2).max(100),
+  shortCode: Joi.string().min(2).max(10),
+  description: Joi.string().allow(""),
+  members: Joi.array().items(objectId()),
+  isActive: Joi.boolean(),
+}).min(1);
+
+export const assignProjectMembersSchema = Joi.object({
+  members: Joi.array().items(objectId()).min(1).required(),
 });
