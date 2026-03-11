@@ -6,6 +6,7 @@ import path from "path";
 import planRoutes from "./routes/planRoutes.js";
 import projectRoutes from "./routes/projectRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
+import taskRoutes from "./routes/taskRoutes.js";
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use("/api/companies", companyRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/plans", planRoutes);
 app.use("/api/webhooks/stripe", webhookRoutes);
+app.use("/api/tasks", taskRoutes)
 app.use(errorHandler);
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 

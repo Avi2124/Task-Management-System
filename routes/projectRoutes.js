@@ -7,10 +7,10 @@ import { idParamSchema } from "../validations/userValidation.js";
 const projectRoutes = express.Router();
 
 projectRoutes.post("/create", userMiddleware({ auth: true, roles: ["admin"], body: createProjectSchema}), createProject);
-projectRoutes.get("/all", userMiddleware({ auth: true, roles: ["admin"] }), getAllProjects);
-projectRoutes.get("/:id", userMiddleware({ auth: true, roles: ["admin"], params: idParamSchema }), getProjectById);
+projectRoutes.get("/all", userMiddleware({ auth: true, roles: ["admin", "user"] }), getAllProjects);
+projectRoutes.get("/:id", userMiddleware({ auth: true, roles: ["admin", "user"], params: idParamSchema }), getProjectById);
 projectRoutes.put("/:id", userMiddleware({ auth: true, roles: ["admin"], body: updateProjectSchema, params: idParamSchema}), updateProject);
 projectRoutes.delete("/:id", userMiddleware({ auth: true, roles: ["admin"], params: idParamSchema }), deleteProject);
-projectRoutes.put("/:id/members", userMiddleware({ auth: true, roles: ["admin"], params: idParamSchema, body: assignProjectMembersSchema }), assignMembersToProject);
+projectRoutes.put("/members/:id", userMiddleware({ auth: true, roles: ["admin"], params: idParamSchema, body: assignProjectMembersSchema }), assignMembersToProject);
 
 export default projectRoutes;

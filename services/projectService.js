@@ -121,6 +121,7 @@ export const getAllProjects = async ({ query, requester }) => {
     isDeleted: false,
   };
 
+  // user can only see assigned projects
   if (user.role === "user") {
     match.members = user._id;
   }
@@ -143,11 +144,73 @@ export const getAllProjects = async ({ query, requester }) => {
   pipeline.push({ $sort: { [sortKey]: sortDir, _id: -1 } });
 
   const skip = (page - 1) * limit;
+
   pipeline.push({
     $facet: {
       data: [
         { $skip: skip },
         { $limit: limit },
+
+        // createdBy details
+        {
+          $lookup: {
+            from: "users",
+            localField: "createdBy",
+            foreignField: "_id",
+            as: "createdBy",
+          },
+        },
+        {
+          $unwind: {
+            path: "$createdBy",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+
+        // members details
+        {
+          $lookup: {
+            from: "users",
+            localField: "members",
+            foreignField: "_id",
+            as: "members",
+          },
+        },
+
+        // select only needed fields
+        {
+          $project: {
+            _id: 1,
+            name: 1,
+            shortCode: 1,
+            description: 1,
+            company: 1,
+            isActive: 1,
+            isDeleted: 1,
+            createdAt: 1,
+            updatedAt: 1,
+
+            createdBy: {
+              _id: "$createdBy._id",
+              name: "$createdBy.name",
+              email: "$createdBy.email",
+              role: "$createdBy.role",
+            },
+
+            members: {
+              $map: {
+                input: "$members",
+                as: "member",
+                in: {
+                  _id: "$$member._id",
+                  name: "$$member.name",
+                  email: "$$member.email",
+                  role: "$$member.role",
+                },
+              },
+            },
+          },
+        },
       ],
       total: [{ $count: "count" }],
     },
@@ -166,31 +229,6 @@ export const getAllProjects = async ({ query, requester }) => {
       totalPages: Math.ceil(total / limit) || 1,
     },
   };
-};
-
-export const getProjectById = async ({ id, requester }) => {
-  const user = await User.findById(requester.id);
-  if (!user) throw new AppError("User not found", 404, "USER_NOT_FOUND");
-
-  const filter = {
-    _id: id,
-    company: user.company,
-    isDeleted: false,
-  };
-
-  if (user.role === "user") {
-    filter.members = user._id;
-  }
-
-  const project = await Project.findOne(filter)
-    .populate("members", "name email role")
-    .populate("createdBy", "name email role");
-
-  if (!project) {
-    throw new AppError("Project not found", 404, "PROJECT_NOT_FOUND");
-  }
-
-  return { project: sanitizeProject(project) };
 };
 
 export const updateProject = async ({ id, payload, requester }) => {
