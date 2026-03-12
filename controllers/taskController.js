@@ -93,3 +93,18 @@ export const deleteTask = asyncHandler(async (req, res) => {
     error: null,
   });
 });
+
+export const getAllTaskHistory = asyncHandler(async (req, res) => {
+  const result = await taskService.getAllTaskHistory({
+    query: req.query,
+    requester: req.user,
+  });
+
+  return sendResponse(res, {
+    status: true,
+    statusCode: 200,
+    message: "Task history fetched successfully",
+    data: result,
+    error: null,
+  });
+});

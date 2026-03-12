@@ -3,6 +3,7 @@ import { Project } from "../models/projectModel.js";
 import { User } from "../models/userModel.js";
 import { AppError } from "../utils/AppError.js";
 import { generateTaskId } from "../utils/generateTaskId.js";
+import { TaskHistory } from "../models/taskHistory.js";
 
 const sanitizeTask = (task) => ({
   id: task._id,
@@ -122,11 +123,22 @@ export const createTask = async ({ payload, requester }) => {
     dueDate,
   });
 
-  const populatedTask = await populateTaskDetails(
-    Task.findById(task._id)
-  );
-
-  return { task: sanitizeTask(populatedTask) };
+  await TaskHistory.create({
+      company: requesterUser.company,
+      task: task._id,
+      action: "task_created",
+      oldValue: null,
+      newValue: {
+          title: task.title,
+          status: task.status
+        },
+        changedBy: requesterUser.id
+    });       
+    const populatedTask = await populateTaskDetails(
+      Task.findById(task._id)
+    );
+  
+    return { task: sanitizeTask(populatedTask) };
 };
 
 export const getAllTasks = async ({ query, requester }) => {
@@ -256,6 +268,16 @@ export const updateTask = async ({ id, payload, requester }) => {
     throw new AppError("Task not found", 404, "TASK_NOT_FOUND");
   }
 
+  const oldSnapshot = {
+    title: task.title,
+    description: task.description,
+    assignedTo: task.assignedTo,
+    reportTo: task.reportTo,
+    priority: task.priority,
+    status: task.status,
+    dueDate: task.dueDate
+  };
+
   const { title, description, assignedTo, reportTo, priority, status, dueDate } = payload;
 
   if (title) task.title = title;
@@ -293,10 +315,26 @@ export const updateTask = async ({ id, payload, requester }) => {
   task.updatedBy = requesterUser._id;
   await task.save();
 
+  await TaskHistory.create({
+    company: requesterUser.company,
+    task: task._id,
+    action: "task_updated",
+    oldValue: oldSnapshot,
+    newValue: {
+        title: task.title,
+        description: task.description,
+        assignedTo: task.assignedTo,
+        reportTo: task.reportTo,
+        priority: task.priority,
+        status: task.status,
+        dueDate: task.dueDate
+    },
+    changedBy: requesterUser._id
+  });
+
   const populatedTask = await populateTaskDetails(
     Task.findById(task._id)
   );
-
   return { task: sanitizeTask(populatedTask) };
 };
 
@@ -319,9 +357,19 @@ export const updateTaskStatus = async ({ id, payload, requester }) => {
     throw new AppError("Task not found", 404, "TASK_NOT_FOUND");
   }
 
+  const oldStatus = task.status;
   task.status = payload.status;
   task.updatedBy = requesterUser._id;
   await task.save();
+
+  await TaskHistory.create({
+    company: requesterUser.company,
+    task: task._id,
+    action: "status_changed",
+    oldValue: oldStatus,
+    newValue: task.status,
+    changedBy: requesterUser._id
+  });
 
   const populatedTask = await populateTaskDetails(
     Task.findById(task._id)
@@ -350,5 +398,200 @@ export const deleteTask = async ({ id, requester }) => {
   task.updatedBy = requesterUser._id;
   await task.save();
 
+  await TaskHistory.create({
+    compay: requesterUser.company,
+    task: task._id,
+    action: "task_deleted",
+    oldValue: null,
+    newValue: {isDeleted: true},
+    changedBy: requesterUser._id
+  });
+
   return { message: "Task deleted successfully" };
+};
+
+export const getAllTaskHistory = async ({ query, requester }) => {
+  const requesterUser = await User.findById(requester.id);
+  if (!requesterUser) {
+    throw new AppError("User not found", 404, "USER_NOT_FOUND");
+  }
+
+  let {
+    page = 1,
+    limit = 10,
+    search = "",
+    action = "",
+    taskId = "",
+    sortOrder = "desc",
+  } = query;
+
+  page = Number(page) || 1;
+  limit = Number(limit) || 10;
+  if (page < 1) page = 1;
+  if (limit < 1) limit = 10;
+
+  const match = {
+    company: requesterUser.company,
+  };
+
+  if (action) match.action = action;
+  if (taskId) match.task = taskId;
+
+  if (requesterUser.role === "user") {
+    const assignedTasks = await Task.find({
+      company: requesterUser.company,
+      assignedTo: requesterUser._id,
+    }).select("_id");
+
+    const taskIds = assignedTasks.map((t) => t._id);
+    match.task = { $in: taskIds };
+  }
+
+  const pipeline = [{ $match: match }];
+
+  // TASK LOOKUP
+  pipeline.push({
+    $lookup: {
+      from: "tasks",
+      localField: "task",
+      foreignField: "_id",
+      as: "task",
+    },
+  });
+
+  pipeline.push({
+    $unwind: {
+      path: "$task",
+      preserveNullAndEmptyArrays: true,
+    },
+  });
+
+  // CHANGED BY USER
+  pipeline.push({
+    $lookup: {
+      from: "users",
+      localField: "changedBy",
+      foreignField: "_id",
+      as: "changedBy",
+    },
+  });
+
+  pipeline.push({
+    $unwind: {
+      path: "$changedBy",
+      preserveNullAndEmptyArrays: true,
+    },
+  });
+
+  // ASSIGNED USER
+  pipeline.push({
+    $lookup: {
+      from: "users",
+      localField: "task.assignedTo",
+      foreignField: "_id",
+      as: "assignedTo",
+    },
+  });
+
+  pipeline.push({
+    $unwind: {
+      path: "$assignedTo",
+      preserveNullAndEmptyArrays: true,
+    },
+  });
+
+  // REPORT TO USER
+  pipeline.push({
+    $lookup: {
+      from: "users",
+      localField: "task.reportTo",
+      foreignField: "_id",
+      as: "reportTo",
+    },
+  });
+
+  pipeline.push({
+    $unwind: {
+      path: "$reportTo",
+      preserveNullAndEmptyArrays: true,
+    },
+  });
+
+  if (search) {
+    const regex = new RegExp(search, "i");
+    pipeline.push({
+      $match: {
+        $or: [
+          { action: { $regex: regex } },
+          { "task.taskId": { $regex: regex } },
+          { "task.title": { $regex: regex } },
+          { "changedBy.name": { $regex: regex } },
+        ],
+      },
+    });
+  }
+
+  // PROJECT RESPONSE
+  pipeline.push({
+    $project: {
+      _id: 1,
+      action: 1,
+      oldValue: 1,
+      newValue: 1,
+      createdAt: 1,
+      updatedAt: 1,
+
+      changedBy: {
+        _id: "$changedBy._id",
+        name: "$changedBy.name",
+        email: "$changedBy.email",
+      },
+
+      task: {
+        _id: "$task._id",
+        taskId: "$task.taskId",
+        title: "$task.title",
+        status: "$task.status",
+        priority: "$task.priority",
+
+        assignedTo: {
+          _id: "$assignedTo._id",
+          name: "$assignedTo.name",
+          email: "$assignedTo.email",
+        },
+
+        reportTo: {
+          _id: "$reportTo._id",
+          name: "$reportTo.name",
+          email: "$reportTo.email",
+        },
+      },
+    },
+  });
+
+  const sortDir = sortOrder === "asc" ? 1 : -1;
+  pipeline.push({ $sort: { createdAt: sortDir, _id: -1 } });
+
+  const skip = (page - 1) * limit;
+
+  pipeline.push({
+    $facet: {
+      data: [{ $skip: skip }, { $limit: limit }],
+      total: [{ $count: "count" }],
+    },
+  });
+
+  const result = await TaskHistory.aggregate(pipeline);
+  const data = result[0]?.data || [];
+  const total = result[0]?.total?.[0]?.count || 0;
+
+  return {
+    history: data,
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+    },
+  };
 };
