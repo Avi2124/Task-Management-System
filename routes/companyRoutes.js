@@ -6,7 +6,7 @@ import { createCompany, deleteCompany, getAllCompanies, getCompanyById, updateCo
 const companyRoutes = express.Router();
 
 companyRoutes.post("/create", userMiddleware({ auth: true, roles: ["admin"], body: companySchema }), createCompany);
-companyRoutes.get("/company/:companyId", userMiddleware({ auth: true, roles: ["admin"], params: companyCodeParamSchema }), getCompanyById);
+companyRoutes.get("/company/:companyId", userMiddleware({ auth: true, roles: ["superadmin", "admin"], params: companyCodeParamSchema }), getCompanyById);
 companyRoutes.get("/all-company", userMiddleware({ auth: true, roles: ["superadmin"] }), getAllCompanies);
 companyRoutes.put("/company/:id", userMiddleware({ auth: true, roles: ["admin"], params: companyMongoIdParamSchema, body: companyUpdateSchema }), updateCompany);
 companyRoutes.delete("/company/:id", userMiddleware({ auth: true, roles: ["superadmin", "admin"], params: companyMongoIdParamSchema, }), deleteCompany);

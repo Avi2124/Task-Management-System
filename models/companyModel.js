@@ -10,7 +10,7 @@ const companySchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending_payment", "active", "payment_failed"],
+      enum: ["pending_payment", "active", "expired", "payment_failed"],
       default: "pending_payment",
     },
 
@@ -23,6 +23,12 @@ const companySchema = new mongoose.Schema(
     planStartAt: { type: Date, default: null },
     planExpiresAt: { type: Date, default: null },
 
+    reminders: {
+      sevenDaySent: { type: Boolean, default: false },
+      threeDaySent: { type: Boolean, default: false },
+      oneDaySent: { type: Boolean, default: false },
+    },
+
     stripe: {
       checkout_session_id: { type: String, default: null },
       checkout_url: { type: String, default: null },
@@ -30,7 +36,7 @@ const companySchema = new mongoose.Schema(
       status: { type: String, default: null },
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export default mongoose.model("Company", companySchema);

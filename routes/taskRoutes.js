@@ -4,10 +4,9 @@ import { idParamSchema } from "../validations/userValidation.js";
 import { createTaskSchema, updateTaskSchema, updateTaskStatusSchema } from "../validations/taskValidation.js";
 import { createTask, getAllTasks, getTaskById, updateTask, updateTaskStatus, deleteTask, getAllTaskHistory } from "../controllers/taskController.js";
 
-
 const taskRoutes = express.Router();
 
-taskRoutes.post("/",userMiddleware({ auth: true, roles: ["admin", "user"], body: createTaskSchema }),createTask);
+taskRoutes.post("/",userMiddleware({ auth: true, roles: ["admin"], body: createTaskSchema }),createTask);
 taskRoutes.get("/",userMiddleware({ auth: true, roles: ["admin", "user"] }),getAllTasks);
 taskRoutes.get("/history",userMiddleware({auth: true,roles: ["admin", "user"],}),getAllTaskHistory);
 taskRoutes.get("/:id",userMiddleware({ auth: true, roles: ["admin","user"], params: idParamSchema }),getTaskById);

@@ -3,6 +3,7 @@ import { sendResponse } from "../utils/sendResponse.js";
 import { User } from "../models/userModel.js";
 import { asyncHandler } from "./asyncHandler.js";
 import { AppError } from "../utils/AppError.js";
+import Company from "../models/companyModel.js";
 
 export const userMiddleware = ({
   body = null,
@@ -43,6 +44,47 @@ export const userMiddleware = ({
           401,
           "USER_NOT_FOUND",
         );
+      }
+
+      if (user.company) {
+        const company = await Company.findById(user.company);
+
+        if (!company) {
+          throw new AppError("Company not found", 404, "COMPANY_NOT_FOUND");
+        }
+
+        const now = new Date();
+
+        if (
+          company.status === "active" &&
+          company.planExpiresAt &&
+          company.planExpiresAt < now
+        ) {
+          company.status = "pending_payment";
+          company.plan = null;
+          company.planStartAt = null;
+          company.planExpiresAt = null;
+          company.stripe.checkout_session_id = null;
+          company.stripe.checkout_url = null;
+          company.stripe.payment_intent_id = null;
+          company.stripe.status = null;
+
+          await company.save();
+
+          throw new AppError(
+            "Company subscription expired. Please renew your plan.",
+            403,
+            "PLAN_EXPIRED",
+          );
+        }
+
+        if (company.status !== "active") {
+          throw new AppError(
+            "Company subscription is not active",
+            403,
+            "COMPANY_PLAN_INACTIVE",
+          );
+        }
       }
 
       if (roles.length > 0 && !roles.includes(user.role)) {

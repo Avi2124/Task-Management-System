@@ -54,7 +54,7 @@ app.use("/api/auth", userRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/plans", planRoutes);
-app.use("/api/webhooks/stripe", webhookRoutes);
+app.use("/api/webhooks", webhookRoutes);
 app.use("/api/tasks", taskRoutes)
 app.use(errorHandler);
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));

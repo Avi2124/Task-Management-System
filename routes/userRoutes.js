@@ -8,7 +8,7 @@ const userRoutes = express.Router();
 
 // public auth
 userRoutes.post("/signup-superadmin",upload.single("profileImage"),userMiddleware({ body: createSuperadminSchema }),createSuperadmin);
-userRoutes.post("/register",upload.single("profileImage"),userMiddleware({ body: registerAdminSchema }),registerAdmin);
+userRoutes.post("/register-admin",upload.single("profileImage"),userMiddleware({ body: registerAdminSchema }),registerAdmin);
 userRoutes.post("/login", userMiddleware({ body: loginSchema }), login);
 userRoutes.post("/verify-otp", userMiddleware({ body: verifyOtpSchema }), verifyOtpAndIssueTokens);
 userRoutes.post("/refresh-token", userMiddleware({ body: refreshTokenSchema }), refreshAccessToken);
