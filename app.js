@@ -8,6 +8,7 @@ import projectRoutes from "./routes/projectRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
 import commentRoutes from "./routes/commentRoutes.js";
+import dashboardRoutes from "./routes/dashboardRoutes.js";
 
 const app = express();
 
@@ -58,6 +59,7 @@ app.use("/api/plans", planRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/tasks", taskRoutes)
 app.use("/api", commentRoutes)
+app.use("/api/dashboard", dashboardRoutes)
 app.use(errorHandler);
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
