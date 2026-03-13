@@ -3,7 +3,7 @@ import { Project } from "../models/projectModel.js";
 import { User } from "../models/userModel.js";
 import { AppError } from "../utils/AppError.js";
 import { generateTaskId } from "../utils/generateTaskId.js";
-import { TaskHistory } from "../models/taskHistory.js";
+import { TaskHistory } from "../models/taskHistoryModel.js";
 
 const sanitizeTask = (task) => ({
   id: task._id,
