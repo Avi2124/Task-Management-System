@@ -67,3 +67,31 @@ export const deleteCompany = asyncHandler(async (req, res) => {
     error: null,
   });
 });
+
+// --------- GET RENEWAL PLANS --------------
+export const getRenewalPlans = asyncHandler(async (req, res) => {
+  const data = await companyService.getRenewalPlans({
+    requester: req.user,
+  });
+  return sendResponse(res, {
+    status: true,
+    statusCode: 200,
+    message: "Renewal plans fetched successfully",
+    data,
+    erro: null
+  });
+});
+
+export const createRenewPlanCheckout = asyncHandler(async (req, res) => {
+  const data = await companyService.createRenewPlanCheckout({
+    requester: req.user,
+    planId: req.body.planId,
+  });
+  return sendResponse(res, {
+    status: true,
+    statusCode: 200,
+    message: "Renewal checkout created successfully",
+    data,
+    error: null,
+  });
+});

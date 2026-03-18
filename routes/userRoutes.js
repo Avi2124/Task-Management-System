@@ -17,7 +17,7 @@ userRoutes.post("/logout", userMiddleware({ auth: true, body: logoutSchema }), l
 // superadmin manages admins
 userRoutes.get("/get-admin/:id",userMiddleware({auth: true,roles: ["superadmin"],params: idParamSchema,}),getAdminById);
 userRoutes.get("/get-admins",userMiddleware({auth: true,roles: ["superadmin"],}),getAllAdmins);
-userRoutes.put("/update-admin/:id",upload.single("profileImage"),userMiddleware({auth: true,roles: ["superadmin"],params: idParamSchema,body: updateAdminSchema,}),updateAdmin);
+userRoutes.put("/update-admin/:id",upload.single("profileImage"),userMiddleware({auth: true,roles: ["admin", "superadmin"],params: idParamSchema,body: updateAdminSchema,}),updateAdmin);
 userRoutes.delete("/delete-admin/:id",userMiddleware({auth: true,roles: ["superadmin"],params: idParamSchema,}),deleteAdmin);
 
 // admin creates company users
@@ -26,7 +26,7 @@ userRoutes.post("/create-user",upload.single("profileImage"),userMiddleware({aut
 // user management
 userRoutes.put("/update-user/:id",upload.single("profileImage"),userMiddleware({auth: true,params: idParamSchema,body: updateUserSchema,}),updateUser);
 userRoutes.delete("/delete-user/:id",userMiddleware({auth: true,roles: ["admin"],params: idParamSchema,}),deleteUser);
-userRoutes.get("/get-user/:id",userMiddleware({auth: true,params: idParamSchema,}),getUserById);
-userRoutes.get("/get-users",userMiddleware({auth: true,roles: ["superadmin", "admin"],}),getAllUsers);
+userRoutes.get("/get-user/:id",userMiddleware({auth: true, roles: ["admin", "user"], params: idParamSchema,}),getUserById);
+userRoutes.get("/get-users",userMiddleware({auth: true,roles: ["admin"],}),getAllUsers);
 
 export default userRoutes;

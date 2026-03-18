@@ -2,15 +2,15 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
 import { sendResponse } from "../utils/sendResponse.js";
 import * as dashboardService from "../services/dashboardService.js";
 
-export const getSuperAdminDashboard = asyncHandler(async (req, res) => {
-  const data = await dashboardService.getSuperAdminDashboard({
+export const getDashboard = asyncHandler(async (req, res) => {
+  const data = await dashboardService.getDashboard({
     requester: req.user,
   });
 
   return sendResponse(res, {
     status: true,
     statusCode: 200,
-    message: "Superadmin dashboard fetched successfully",
+    message: `${data.role} dashboard fetched successfully`,
     data,
     error: null,
   });

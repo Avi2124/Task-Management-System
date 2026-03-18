@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Socket Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background:#f7f7f7; }
+    .card { max-width: 900px; background:#fff; border-radius:12px; padding:20px; box-shadow:0 4px 18px rgba(0,0,0,0.08); }
+    input, button { padding:10px 12px; margin:6px 6px 6px 0; }
+    #status { margin:12px 0; font-weight:bold; }
+    #messages { background:#111; color:#0f0; padding:14px; border-radius:10px; min-height:260px; overflow:auto; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Task Management Socket Test</h2>
+    <p>Enter user Mongo ID and click connect. Then assign project/task or update task status to see live events.</p>
+
+    <input type="text" id="userId" placeholder="Enter user id" style="width: 320px;" />
+    <button id="connectBtn">Connect Socket</button>
+    <button id="clearBtn">Clear Logs</button>
+
+    <div id="status">Status: Disconnected</div>
+    <div id="messages"></div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    let socket;
+    const statusEl = document.getElementById('status');
+    const messagesEl = document.getElementById('messages');
+
+    function logMessage(title, data) {
+      const time = new Date().toLocaleTimeString();
+      const line = `[${time}] ${title}\n${JSON.stringify(data, null, 2)}\n\n`;
+      messagesEl.textContent = line + messagesEl.textContent;
+    }
+
+    document.getElementById('connectBtn').addEventListener('click', () => {
+      const userId = document.getElementById('userId').value.trim();
+      if (!userId) {
+        alert('Please enter user id');
+        return;
+      }
+
+      if (socket) {
+        socket.disconnect();
+      }
+
+      socket = io(window.location.origin, {
+        transports: ['websocket', 'polling'],
+      });
+
+      socket.on('connect', () => {
+        statusEl.textContent = `Status: Connected (${socket.id})`;
+        socket.emit('register', userId);
+        logMessage('Socket connected', { socketId: socket.id, userId });
+      });
+
+      socket.on('disconnect', (reason) => {
+        statusEl.textContent = `Status: Disconnected (${reason})`;
+        logMessage('Socket disconnected', { reason });
+      });
+
+      socket.on('project_assigned', (data) => logMessage('project_assigned event received', data));
+      socket.on('task_assigned', (data) => logMessage('task_assigned event received', data));
+      socket.on('task_status_updated', (data) => logMessage('task_status_updated event received', data));
+      socket.on('important_alert', (data) => logMessage('important_alert event received', data));
+
+      socket.on('connect_error', (error) => {
+        statusEl.textContent = 'Status: Connection failed';
+        logMessage('Socket connection error', { message: error.message });
+      });
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      messagesEl.textContent = '';
+    });
+  </script>
+</body>
+</html>

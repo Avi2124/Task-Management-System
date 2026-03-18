@@ -1,5 +1,8 @@
 import Company from "../models/companyModel.js";
 import { AppError } from "../utils/AppError.js";
+import stripe from "../config/stripe.js";
+import { Plan } from "../models/planModel.js";
+import { User } from "../models/userModel.js"; 
 
 const toCompanyDTO = (c) => ({
   id: c._id,
@@ -118,4 +121,105 @@ export const updateCompany = async ({ id, payload }) => {
 export const deleteCompany = async (id) => {
   const company = await Company.findByIdAndDelete(id);
   if (!company) throw new AppError("Company not found", 404, "COMPANY_NOT_FOUND");
+};
+
+export const getRenewalPlans = async ({requester}) => {
+  if(!requester?.id || requester.role !== "admin"){
+    throw new AppError("Only admin can view renewal plans", 403, "FORBIDDEN");
+  }
+  const adminUser = await User.findById(requester.id);
+  if(!adminUser || !adminUser.company){
+    throw new AppError("Admin compan not found", 404, "COMPANY_NOT_FOUND");
+  }
+
+  const company = await Company.findById(adminUser.company);
+  if(!company){
+    throw new AppError("Company not found", 404, "COMPANY_NOT_FOUND");
+  }
+
+  const plans = await Plan.find({isActive: true}).sort({price: 1});
+  return {
+    company: {
+      id: company._id,
+      name: company.name,
+      companyId: company.companyId,
+      status: company.status,
+      currentPlan: company.plan,
+      planStartAt: company.planStartAt,
+      planExpiresAt: company.planExpiresAt
+    },
+    plans,
+  };
+};
+
+export const createRenewPlanCheckout = async ({requester, planId}) => {
+  if(!requester?.id || requester.role !== "admin"){
+    throw new AppError("Only admin can renew company plan", 403, "FORBIDDEN");
+  }
+
+  const adminUser = await User.findById(requester.id);
+  if(!adminUser || !adminUser.company){
+    throw new AppError("Admin company not found", 404, "COMPANY_NOT_FOUND");
+  }
+
+  const company = await Company.findById(adminUser.company);
+  if(!company){
+    throw new AppError("Company not found", 404, "COMPANY_NOT_FOUND");
+  }
+
+  const selectedPlan = await Plan.findById(planId);
+  if(!selectedPlan || !selectedPlan.isActive){
+    throw new AppError("Plan not found", 404, "PLAN_NOT_FOUND");
+  }
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    payment_method_types: ["card"],
+    line_items: [{
+      price_data: {
+        currency: "inr",
+        product_data: {
+          name: selectedPlan.name,
+          description: `Renewal subscription for ${company.name}`,
+        },
+        unit_amount: Math.round(Number(selectedPlan.price) * 100),
+      },
+      quantity: 1,
+    },],
+    metadata: {
+      companyId: company._id.toString(),
+      adminId: adminUser._id.toString(),
+      planId: selectedPlan._id.toString(),
+      renewal: "true",
+    },
+    success_url: process.env.STRIPE_SUCCESS_URL || "http://localhost:1213/payment-success",
+    cancel_url: process.env.STRIPE_CANCEL_URL || "http://localhost:1213/paymnt-failed"
+  });
+
+  company.plan = selectedPlan._id;
+  company.stripe = {
+    checkout_session_id: session.id,
+    checkout_url: session.url,
+    payment_intent_id: session.payment_intent || null,
+    status: session.payment_status || "created",
+  };
+
+  if(company.status === "expired" || company.status === "payment_failed"){
+    company.status = "pending_payment";
+  }
+  await company.save();
+
+  return{
+    company: {
+      id: company._id,
+      name: company.name,
+      companyid: company.companyId,
+      status: company.status,
+      plan: company.plan
+    },
+    payment: {
+      checkoutSessionId: session.id,
+      checkout_url: session.url,
+    },
+  };
 };

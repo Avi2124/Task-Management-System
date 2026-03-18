@@ -1,15 +1,15 @@
 import jwt from "jsonwebtoken";
-import { sendResponse } from "../utils/sendResponse.js";
 import { User } from "../models/userModel.js";
 import { asyncHandler } from "./asyncHandler.js";
 import { AppError } from "../utils/AppError.js";
 import Company from "../models/companyModel.js";
 
-export const userMiddleware = ({
+const buildUserMiddleware = ({
   body = null,
   params = null,
   auth = false,
   roles = [],
+  allowExpiredPlan = false,
 } = {}) =>
   asyncHandler(async (req, res, next) => {
     if (auth) {
@@ -46,8 +46,10 @@ export const userMiddleware = ({
         );
       }
 
+      let company = null;
+
       if (user.company) {
-        const company = await Company.findById(user.company);
+        company = await Company.findById(user.company);
 
         if (!company) {
           throw new AppError("Company not found", 404, "COMPANY_NOT_FOUND");
@@ -60,38 +62,26 @@ export const userMiddleware = ({
           company.planExpiresAt &&
           company.planExpiresAt < now
         ) {
-          company.status = "pending_payment";
-          company.plan = null;
-          company.planStartAt = null;
-          company.planExpiresAt = null;
-          company.stripe.checkout_session_id = null;
-          company.stripe.checkout_url = null;
-          company.stripe.payment_intent_id = null;
-          company.stripe.status = null;
-
+          company.status = "expired";
           await company.save();
-
-          throw new AppError(
-            "Company subscription expired. Please renew your plan.",
-            403,
-            "PLAN_EXPIRED",
-          );
         }
 
-        if (company.status !== "active") {
+        if (!allowExpiredPlan && company.status !== "active") {
           throw new AppError(
-            "Company subscription is not active",
+            company.status === "expired"
+              ? "Company subscription expired. Please renew your plan."
+              : "Company subscription is not active",
             403,
-            "COMPANY_PLAN_INACTIVE",
+            company.status === "expired"
+              ? "PLAN_EXPIRED"
+              : "COMPANY_PLAN_INACTIVE",
           );
         }
       }
-
       if (roles.length > 0 && !roles.includes(user.role)) {
         throw new AppError("Access denied", 403, "FORBIDDEN");
       }
 
-      // attach user info to request
       req.user = {
         id: user._id.toString(),
         name: user.name,
@@ -102,6 +92,7 @@ export const userMiddleware = ({
         status: user.status,
         profileImage: user.profileImage || null,
       };
+      req.company = company;
     }
 
     if (body) {
@@ -116,7 +107,6 @@ export const userMiddleware = ({
           details,
         );
       }
-
       req.body = value;
     }
 
@@ -139,3 +129,9 @@ export const userMiddleware = ({
     }
     return next();
   });
+
+  export const userMiddleware = (options = {}) => 
+    buildUserMiddleware({...options, allowExpiredPlan: false});
+
+  export const userMiddlewareAllowExpiredPlan = (options = {}) =>
+    buildUserMiddleware({...options, allowExpiredPlan: true});

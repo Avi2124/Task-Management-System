@@ -3,7 +3,6 @@ import { User } from "../models/userModel.js";
 import { AppError } from "../utils/AppError.js";
 import fs from "fs/promises";
 import Company from "../models/companyModel.js";
-import { Project } from "../models/projectModel.js";
 
 const sanitizeUser = (user) => ({
   id: user._id,
@@ -213,33 +212,10 @@ export const updateUser = async ({ id, payload, requester, file }) => {
     }
   }
 
-  const { name, password, project } = payload;
+  const { name, password } = payload;
 
   if (name) user.name = name;
   if (password) user.password = password;
-
-  if (requesterUser.role === "admin" && payload.hasOwnProperty("project")) {
-    if (!project) {
-      user.project = null;
-    } else {
-      const projectDoc = await Project.findOne({
-        _id: project,
-        company: requesterUser.company,
-        isDeleted: false,
-        isActive: true,
-      });
-
-      if (!projectDoc) {
-        throw new AppError(
-          "Project not found for this company",
-          400,
-          "PROJECT_NOT_FOUND"
-        );
-      }
-
-      user.project = projectDoc._id;
-    }
-  }
 
   const profileImageUrl = await uploadProfileImage(file);
   if (profileImageUrl) user.profileImage = profileImageUrl;

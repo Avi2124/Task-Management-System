@@ -67,3 +67,170 @@ export const sendSubscriptionReminderEmail = async ({
     console.error("Error sending subscription reminder email:", error);
   }
 };
+
+export const sendUserCreatedEmail = async ({
+  to, name, companyName, password
+}) => {
+  try {
+    await transporter.sendMail({
+      from: `"Task Management"<${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+      to,
+      subject: "Your account has been created",
+      html: `
+        <div style="font-family: Arial, sans-serif;">
+          <h2>Hello ${name},</h2>
+          <p>Your account has been created successfully.</p>
+
+          <p>
+            <b>Company:</b> ${companyName || "N/A"} <br/>
+            <b>Email:</b> ${to} <br/>
+            <b>Password:</b> ${password}
+          </p>
+
+          <p>Please login and change your password after first login.</p>
+
+          <br/>
+
+          <p>
+            Regards,<br/>
+            <b>Task Management Platform</b>
+          </p>
+        </div>
+      `,
+    });
+  } catch (error) {
+    console.error("Error sending user created email:", error);
+  }
+};
+
+export const sendProjectAssignedEmail = async ({
+  to,
+  name,
+  projectName,
+  projectCode,
+  description,
+}) => {
+  try {
+    await transporter.sendMail({
+      from: `"Task Management" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+      to,
+      subject: "Project Assigned",
+      html: `
+        <div style="font-family: Arial, sans-serif;">
+          <h2>Hello ${name},</h2>
+          <p>You have been assigned to a project.</p>
+
+          <p>
+            <b>Project Name:</b> ${projectName} <br/>
+            <b>Project Code:</b> ${projectCode || "N/A"} <br/>
+            <b>Description:</b> ${description}
+          </p>
+
+          <br/>
+          <p>
+            Regards,<br/>
+            <b>Task Management Platform</b>
+          </p>
+        </div>
+      `,
+    });
+  } catch (error) {
+    console.error("Error sending project assigned email:", error);
+  }
+};
+
+export const sendTaskAssignedEmail = async ({
+  to, name, taskTitle, projectName, dueDate
+}) => {
+  try {
+    await transporter.sendMail({
+      from: `"Task Management" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+      to,
+      subject: "New Task Assigned",
+      html: `
+        <div style="font-family: Arial, sans-serif;">
+          <h2>Hello ${name},</h2>
+          <p>A new task has been assigned to you.</p>
+
+          <p>
+            <b>Task:</b> ${taskTitle} <br/>
+            <b>Project:</b> ${projectName || "N/A"} <br/>
+            <b>Due Date:</b> ${dueDate ? new Date(dueDate).toDateString() : "N/A"}
+          </p>
+
+          <br/>
+
+          <p>
+            Regards,<br/>
+            <b>Task Management Platform</b>
+          </p>
+        </div>
+      `,
+    });
+  } catch (error) {
+    console.error("Error sending task assignment email:", error);
+  }
+};
+
+export const sendImportantAlertEmail = async ({
+  to, name, title, message
+}) => {
+  try {
+    await transporter.sendMail({
+      from: `"Task Management" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+      to,
+      subject: title,
+      html: `
+        <div style="font-family: Arial, sans-serif;">
+          <h2>Hello ${name},</h2>
+          <p>${message}</p>
+
+          <br/>
+
+          <p>
+            Regards,<br/>
+            <b>Task Management Platform</b>
+          </p>
+        </div>
+      `,
+    });
+  } catch (error) {
+    console.error("Error sending important alert email:", error);
+  }
+};
+
+export const sendTaskStatusUpdatedEmail = async ({
+  to,
+  name,
+  taskTitle,
+  oldStatus,
+  newStatus,
+}) => {
+  try {
+    await transporter.sendMail({
+      from: `"Task Management" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+      to,
+      subject: "Task Status Updated",
+      html: `
+        <div style="font-family: Arial, sans-serif;">
+          <h2>Hello ${name},</h2>
+          <p>The task status has been updated.</p>
+
+          <p>
+            <b>Task:</b> ${taskTitle} <br/>
+            <b>Old Status:</b> ${oldStatus} <br/>
+            <b>New Status:</b> ${newStatus}
+          </p>
+
+          <br/>
+          <p>
+            Regards,<br/>
+            <b>Task Management Platform</b>
+          </p>
+        </div>
+      `,
+    });
+  } catch (error) {
+    console.error("Error sending task status updated email:", error);
+  }
+};

@@ -10,6 +10,7 @@ import { generateAccessToken, generateRefreshToken } from "../utils/token.js";
 import { sendOtpEmail } from "../config/mailer.js";
 import cloudinary from "../config/cloudinary.js";
 import fs from "fs/promises";
+import { notifyUserCreated } from "./notificationService.js";
 
 const OTP_EXP_MINUTES = Number(process.env.OTP_EXP_MINUTES || 5);
 
@@ -25,23 +26,37 @@ const uploadProfileImage = async (file) => {
   return result.secure_url;
 };
 
-const ensureActiveCompanyAndPlan = async (companyId) => {
+const getCompanyForLogin = async (companyId) => {
   const company = await Company.findById(companyId).populate("plan");
 
   if (!company) {
     throw new AppError("Company not found", 400, "COMPANY_NOT_FOUND");
   }
 
+  const now = new Date();
+
+  if (
+    company.status === "active" &&
+    company.planExpiresAt &&
+    company.planExpiresAt < now
+  ) {
+    company.status = "expired";
+    await company.save();
+  }
+  return company;
+};
+
+const ensureActiveCompanyAndPlan = async (companyId) => {
+  const company = await Company.findById(companyId).populate("plan");
+
   if (company.status !== "active") {
     throw new AppError(
-      "Company subscription not active",
+      company.status === "expired"
+        ? "Company subscription expired"
+        : "Company subscription not active",
       403,
-      "COMPANY_NOT_ACTIVE",
+      company.status === "expired" ? "PLAN_EXPIRED" : "COMPANY_NOT_ACTIVE",
     );
-  }
-
-  if (company.planExpiresAt && company.planExpiresAt < new Date()) {
-    throw new AppError("Plan expired", 403, "PLAN_EXPIRED");
   }
 
   if (!company.plan || !company.plan.isActive) {
@@ -108,7 +123,7 @@ export const createUser = async (payload = {}, file, requester) => {
   }
 
   const company = await ensureActiveCompanyAndPlan(adminUser.company);
-  const { name, email, password, project } = payload;
+  const { name, email, password } = payload;
 
   const existing = await User.findOne({ email });
   if (existing) {
@@ -124,25 +139,6 @@ export const createUser = async (payload = {}, file, requester) => {
     throw new AppError("User limit reached", 400, "USER_LIMIT_REACHED");
   }
 
-  let projectId = null;
-  if (project) {
-    const projectDoc = await Project.findOne({
-      _id: project,
-      company: adminUser.company,
-      isDeleted: false,
-      isActive: true,
-    });
-
-    if (!projectDoc) {
-      throw new AppError(
-        "Project not found for this company",
-        400,
-        "PROJECT_NOT_FOUND",
-      );
-    }
-    projectId = projectDoc._id;
-  }
-
   const profileImageUrl = await uploadProfileImage(file);
 
   const user = await User.create({
@@ -152,10 +148,19 @@ export const createUser = async (payload = {}, file, requester) => {
     role: "user",
     company: adminUser.company,
     companyId: adminUser.companyId,
-    project: projectId,
     status: "active",
     ...(profileImageUrl && { profileImage: profileImageUrl }),
   });
+
+  try {
+    await notifyUserCreated({
+      user,
+      companyName: company.name,
+      rawPassword: password,
+    });
+  } catch (error) {
+    console.error("User creation notification failed:", error.message);
+  }
 
   return {
     user: {
@@ -165,7 +170,6 @@ export const createUser = async (payload = {}, file, requester) => {
       role: user.role,
       company: user.company,
       companyId: user.companyId,
-      project: user.project,
       profileImage: user.profileImage,
     },
   };
@@ -308,17 +312,59 @@ export const login = async ({ email, password }) => {
     throw new AppError("Invalid password", 401, "INVALID_CREDENTIALS");
   }
 
-  if (user.status && user.status !== "active") {
-    throw new AppError(
-      "User is not active. Complete payment.",
-      403,
-      "USER_INACTIVE",
-    );
-  }
+  let company = null;
 
   if (user.role !== "superadmin") {
-    await ensureActiveCompanyAndPlan(user.company);
+    company = await getCompanyForLogin(user.company);
+
+    if (user.role === "user") {
+      if (user.status && user.status !== "active") {
+        throw new AppError(
+          "User is not active. Please contact admin.",
+          403,
+          "USER_INACTIVE",
+        );
+      }
+
+      if (company.status !== "active") {
+        throw new AppError(
+          company.status === "expired"
+            ? "Company subscription expired. Please contact admin."
+            : "Company subscription not active",
+          403,
+          company.status === "expired" ? "PLAN_EXPIRED" : "COMPANY_NOT_ACTIVE",
+        );
+      }
+      if (!company.plan || !company.plan.isActive) {
+        throw new AppError("Plan not found", 400, "PLAN_NOT_FOUND");
+      }
+    }
+    if (user.role === "admin") {
+      if (
+        !["active", "expired", "pending_payment", "payment_failed"].includes(
+          company.status,
+        )
+      ) {
+        throw new AppError(
+          "Company subscription status is invalid",
+          403,
+          "COMPANY_NOT_ACTIVE",
+        );
+      }
+    }
+  } else {
+    if (user.status && user.status !== "active") {
+      throw new AppError(
+        "User is not active. Complete payment.",
+        403,
+        "USER_INACTIVE",
+      );
+    }
   }
+
+  // if (user.role !== "superadmin") {
+  //   await ensureActiveCompanyAndPlan(user.company);
+  // }
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const hashedOtp = await bcrypt.hash(otp, 10);
@@ -329,7 +375,12 @@ export const login = async ({ email, password }) => {
 
   await sendOtpEmail({ to: user.email, otp });
 
-  return { email: user.email };
+  return {
+    email: user.email,
+    role: user.role,
+    companyStatus: company?.status || null,
+    renewRequired: user.role === "admin" && company?.status !== "active",
+  };
 };
 
 export const verifyOtpAndIssueTokens = async ({ email, otp }) => {
@@ -350,6 +401,28 @@ export const verifyOtpAndIssueTokens = async ({ email, otp }) => {
   if (!isMatch) {
     throw new AppError("Invalid OTP", 400, "OTP_INCORRECT");
   }
+  let company = null;
+
+  if(user.role !== "superadmin"){
+    company = await getCompanyForLogin(user.company);
+    if(user.role === "user"){
+      if(company.status !== "active"){
+        throw new AppError(
+          company.status === "expired"
+          ? "Company subscription exppired. Please contact admin."
+          : "Company subscription not active",
+          403,
+          company.status === "expired"
+          ? "PLAN_EXPIRED"
+          : "COMPANY_NOT_ACTIVE"
+        );
+      }
+
+      if(!company.plan || !company.plan.isActive) {
+        throw new AppError("Plan not found", 400, "PLAN_NOT_FOUND");
+      }
+    }
+  }
 
   user.otpCode = null;
   user.otpExpiresAt = null;
@@ -369,6 +442,8 @@ export const verifyOtpAndIssueTokens = async ({ email, otp }) => {
       company: user.company,
       companyId: user.companyId,
       profileImage: user.profileImage,
+      companyStatus: company?.status || null,
+      renewRequired: user.role === "admin" && company?.status !== "active",
       accessToken,
       refreshToken,
     },

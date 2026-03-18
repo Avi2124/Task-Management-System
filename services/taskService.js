@@ -4,6 +4,11 @@ import { User } from "../models/userModel.js";
 import { AppError } from "../utils/AppError.js";
 import { generateTaskId } from "../utils/generateTaskId.js";
 import { TaskHistory } from "../models/taskHistoryModel.js";
+import cloudinary from "../config/cloudinary.js";
+import {
+  notifyTaskAssigned,
+  notifyTaskStatusUpdated,
+} from "./notificationService.js";
 
 const sanitizeTask = (task) => ({
   id: task._id,
@@ -12,6 +17,11 @@ const sanitizeTask = (task) => ({
   description: task.description,
   company: task.company,
   project: task.project,
+  refDoc: task.refDoc,
+  refDocViewUrl: task.refDocViewUrl,
+  refDocPublicId: task.refDocPublicId,
+  refDocOriginalName: task.refDocOriginalName,
+  refDocMimeType: task.refDocMimeType,
   assignedTo: task.assignedTo,
   reportTo: task.reportTo,
   priority: task.priority,
@@ -56,9 +66,12 @@ const ensureProjectAccess = async ({ projectId, requesterUser, allowAdmin = true
   return project;
 };
 
-export const createTask = async ({ payload, requester }) => {
+export const createTask = async ({ payload, requester, refDocData = null }) => {
   const requesterUser = await User.findById(requester.id);
-  if (!requesterUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
+
+  if (!requesterUser) {
+    throw new AppError("User not found", 404, "USER_NOT_FOUND");
+  }
 
   if (!["admin", "user"].includes(requesterUser.role)) {
     throw new AppError("Forbidden", 403, "FORBIDDEN");
@@ -88,7 +101,11 @@ export const createTask = async ({ payload, requester }) => {
   });
 
   if (!assignedUser) {
-    throw new AppError("Assigned user not found", 404, "ASSIGNED_USER_NOT_FOUND");
+    throw new AppError(
+      "Assigned user not found",
+      404,
+      "ASSIGNED_USER_NOT_FOUND"
+    );
   }
 
   const reportToUser = await User.findOne({
@@ -98,12 +115,21 @@ export const createTask = async ({ payload, requester }) => {
   });
 
   if (!reportToUser) {
-    throw new AppError("Report to user not found", 404, "REPORT_TO_USER_NOT_FOUND");
+    throw new AppError(
+      "Report to user not found",
+      404,
+      "REPORT_TO_USER_NOT_FOUND"
+    );
   }
 
-  const memberIds = project.members.map((m) => m.toString());
+  const memberIds = project.members.map((member) => member.toString());
+
   if (!memberIds.includes(assignedUser._id.toString())) {
-    throw new AppError("Assigned user is not a member of this project", 400, "INVALID_PROJECT_MEMBER");
+    throw new AppError(
+      "Assigned user is not a member of this project",
+      400,
+      "INVALID_PROJECT_MEMBER"
+    );
   }
 
   const taskId = await generateTaskId(project);
@@ -114,6 +140,11 @@ export const createTask = async ({ payload, requester }) => {
     description,
     company: requesterUser.company,
     project: project._id,
+    refDoc: refDocData?.url || null,
+    refDocViewUrl: refDocData?.viewUrl || null,
+    refDocPublicId: refDocData?.publicId || null,
+    refDocOriginalName: refDocData?.originalName || null,
+    refDocMimeType: refDocData?.mimeType || null,
     assignedTo: assignedUser._id,
     reportTo: reportToUser._id,
     priority,
@@ -124,21 +155,50 @@ export const createTask = async ({ payload, requester }) => {
   });
 
   await TaskHistory.create({
-      company: requesterUser.company,
-      task: task._id,
-      action: "task_created",
-      oldValue: null,
-      newValue: {
-          title: task.title,
-          status: task.status
-        },
-        changedBy: requesterUser.id
-    });       
-    const populatedTask = await populateTaskDetails(
-      Task.findById(task._id)
-    );
-  
-    return { task: sanitizeTask(populatedTask) };
+    company: requesterUser.company,
+    task: task._id,
+    refDoc: refDocData?.url || null,
+    refDocViewUrl: refDocData?.viewUrl || null,
+    refDocPublicId: refDocData?.publicId || null,
+    refDocOriginalName: refDocData?.originalName || null,
+    refDocMimeType: refDocData?.mimeType || null,
+    action: "task_created",
+    oldValue: null,
+    newValue: {
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      dueDate: task.dueDate,
+      refDoc: task.refDoc,
+      refDocViewUrl: task.refDocViewUrl,
+      refDocOriginalName: task.refDocOriginalName,
+      refDocMimeType: task.refDocMimeType,
+  refDocViewUrl: task.refDocViewUrl,
+  refDocPublicId: task.refDocPublicId,
+  refDocOriginalName: task.refDocOriginalName,
+  refDocMimeType: task.refDocMimeType,
+    },
+    changedBy: requesterUser._id,
+  });
+
+  try {
+    await notifyTaskAssigned({
+      assignee: assignedUser,
+      task,
+      projectName: project.name,
+    });
+  } catch (error) {
+    console.error("Task assignment notification failed:", error.message);
+  }
+
+  const populatedTask = await populateTaskDetails(
+    Task.findById(task._id)
+  );
+
+  return {
+    task: sanitizeTask(populatedTask),
+  };
 };
 
 export const getAllTasks = async ({ query, requester }) => {
@@ -249,7 +309,7 @@ export const getTaskById = async ({ id, requester }) => {
   return { task: sanitizeTask(task) };
 };
 
-export const updateTask = async ({ id, payload, requester }) => {
+export const updateTask = async ({ id, payload, requester, refDocData = null }) => {
   const requesterUser = await User.findById(requester.id);
   if (!requesterUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
@@ -275,8 +335,14 @@ export const updateTask = async ({ id, payload, requester }) => {
     reportTo: task.reportTo,
     priority: task.priority,
     status: task.status,
-    dueDate: task.dueDate
+    dueDate: task.dueDate,
+    refDoc: task.refDoc,
+    refDocViewUrl: task.refDocViewUrl,
+    refDocOriginalName: task.refDocOriginalName,
+    refDocMimeType: task.refDocMimeType,
   };
+
+  const oldAssignedTo = task.assignedTo ? task.assignedTo.toString() : null;
 
   const { title, description, assignedTo, reportTo, priority, status, dueDate } = payload;
 
@@ -312,6 +378,22 @@ export const updateTask = async ({ id, payload, requester }) => {
     }
   }
 
+  if (refDocData) {
+    if (task.refDocPublicId) {
+      try {
+        await cloudinary.uploader.destroy(task.refDocPublicId, { resource_type: "raw" });
+      } catch (error) {
+        console.error("Old task document delete failed:", error.message);
+      }
+    }
+
+    task.refDoc = refDocData.url;
+    task.refDocViewUrl = refDocData.viewUrl;
+    task.refDocPublicId = refDocData.publicId;
+    task.refDocOriginalName = refDocData.originalName;
+    task.refDocMimeType = refDocData.mimeType;
+  }
+
   task.updatedBy = requesterUser._id;
   await task.save();
 
@@ -321,16 +403,37 @@ export const updateTask = async ({ id, payload, requester }) => {
     action: "task_updated",
     oldValue: oldSnapshot,
     newValue: {
-        title: task.title,
-        description: task.description,
-        assignedTo: task.assignedTo,
-        reportTo: task.reportTo,
-        priority: task.priority,
-        status: task.status,
-        dueDate: task.dueDate
+      title: task.title,
+      description: task.description,
+      assignedTo: task.assignedTo,
+      reportTo: task.reportTo,
+      priority: task.priority,
+      status: task.status,
+      dueDate: task.dueDate,
+      refDoc: task.refDoc,
+      refDocViewUrl: task.refDocViewUrl,
+      refDocOriginalName: task.refDocOriginalName,
+      refDocMimeType: task.refDocMimeType,
     },
     changedBy: requesterUser._id
   });
+
+  if (task.assignedTo && oldAssignedTo !== task.assignedTo.toString()) {
+    const newAssignee = await User.findById(task.assignedTo).select("name email");
+    const taskProject = await Project.findById(task.project).select("name");
+
+    if (newAssignee) {
+      try {
+        await notifyTaskAssigned({
+          assignee: newAssignee,
+          task,
+          projectName: taskProject?.name || null,
+        });
+      } catch (error) {
+        console.error("Task reassignment notification failed:", error.message);
+      }
+    }
+  }
 
   const populatedTask = await populateTaskDetails(
     Task.findById(task._id)
@@ -340,7 +443,9 @@ export const updateTask = async ({ id, payload, requester }) => {
 
 export const updateTaskStatus = async ({ id, payload, requester }) => {
   const requesterUser = await User.findById(requester.id);
-  if (!requesterUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
+  if (!requesterUser) {
+    throw new AppError("User not found", 404, "USER_NOT_FOUND");
+  }
 
   const filter = {
     _id: id,
@@ -368,46 +473,38 @@ export const updateTaskStatus = async ({ id, payload, requester }) => {
     action: "status_changed",
     oldValue: oldStatus,
     newValue: task.status,
-    changedBy: requesterUser._id
+    changedBy: requesterUser._id,
   });
+
+  const reportToUser = await User.findOne({
+    _id: task.reportTo,
+    company: requesterUser.company,
+    role: { $in: ["admin", "user"] },
+  }).select("name email");
+
+  console.log("task.reportTo:", task.reportTo);
+  console.log("reportToUser:", reportToUser);
+
+  if (reportToUser) {
+    try {
+      await notifyTaskStatusUpdated({
+        user: reportToUser,
+        task,
+        oldStatus,
+        newStatus: task.status,
+      });
+    } catch (error) {
+      console.error("Task status notification failed:", error.message);
+    }
+  } else {
+    console.log("reportTo user not found for notification");
+  }
 
   const populatedTask = await populateTaskDetails(
     Task.findById(task._id)
   );
 
   return { task: sanitizeTask(populatedTask) };
-};
-
-export const deleteTask = async ({ id, requester }) => {
-  const requesterUser = await User.findById(requester.id);
-  if (!requesterUser || requesterUser.role !== "admin") {
-    throw new AppError("Only admin can delete task", 403, "FORBIDDEN");
-  }
-
-  const task = await Task.findOne({
-    _id: id,
-    company: requesterUser.company,
-    isDeleted: false,
-  });
-
-  if (!task) {
-    throw new AppError("Task not found", 404, "TASK_NOT_FOUND");
-  }
-
-  task.isDeleted = true;
-  task.updatedBy = requesterUser._id;
-  await task.save();
-
-  await TaskHistory.create({
-    compay: requesterUser.company,
-    task: task._id,
-    action: "task_deleted",
-    oldValue: null,
-    newValue: {isDeleted: true},
-    changedBy: requesterUser._id
-  });
-
-  return { message: "Task deleted successfully" };
 };
 
 export const getAllTaskHistory = async ({ query, requester }) => {

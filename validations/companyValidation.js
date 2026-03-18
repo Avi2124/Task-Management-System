@@ -26,6 +26,10 @@ export const companyMongoIdParamSchema = Joi.object({
     id: objectId().required()
 }); 
 
+export const renewPlanSchema = Joi.object({
+    planId: objectId().required()
+});
+
 export const companyCodeParamSchema = Joi.object({
   companyId: Joi.string().min(2).max(50).required(),
 });

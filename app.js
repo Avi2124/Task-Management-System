@@ -18,6 +18,7 @@ app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }), (req,
 });
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
@@ -26,6 +27,10 @@ app.use((req, res, next) => {
 
 app.get("/", (req, res) => {
   res.send("Task Management API");
+});
+
+app.get("/socket-test", (req, res) => {
+  res.sendFile(path.join(process.cwd(), "public", "socket-test.html"));
 });
 
 app.get("/payment-success", (req, res) => {
@@ -60,7 +65,8 @@ app.use("/api/webhooks", webhookRoutes);
 app.use("/api/tasks", taskRoutes)
 app.use("/api", commentRoutes)
 app.use("/api/dashboard", dashboardRoutes)
-app.use(errorHandler);
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+app.use("/public", express.static(path.join(process.cwd(), "public")));
+app.use(errorHandler);
 
 export default app;

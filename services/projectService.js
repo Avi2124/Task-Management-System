@@ -2,6 +2,7 @@ import { Project } from "../models/projectModel.js";
 import { User } from "../models/userModel.js";
 import Company from "../models/companyModel.js";
 import { AppError } from "../utils/AppError.js";
+import { notifyProjectAssigned } from "./notificationService.js";
 
 const sanitizeProject = (project) => ({
   id: project._id,
@@ -16,6 +17,25 @@ const sanitizeProject = (project) => ({
   createdAt: project.createdAt,
   updatedAt: project.updatedAt,
 });
+
+
+const notifyNewProjectMembers = async ({ users = [], project, existingMemberIds = [] }) => {
+  if (!users.length || !project) return;
+
+  const existingSet = new Set(existingMemberIds.map((id) => id.toString()));
+  const newMembers = users.filter((user) => !existingSet.has(user._id.toString()));
+
+  if (!newMembers.length) return;
+
+  await Promise.all(
+    newMembers.map((user) =>
+      notifyProjectAssigned({
+        user,
+        project,
+      })
+    )
+  );
+};
 
 const ensureAdminCompanyAndPlan = async (companyId) => {
   const company = await Company.findById(companyId).populate("plan");
@@ -73,8 +93,9 @@ export const createProject = async ({ payload, requester }) => {
   }
 
   const validMembers = [];
+  let users = [];
   if (members.length) {
-    const users = await User.find({
+    users = await User.find({
       _id: { $in: members },
       company: adminUser.company,
       role: "user",
@@ -95,6 +116,17 @@ export const createProject = async ({ payload, requester }) => {
     createdBy: adminUser._id,
     members: validMembers,
   });
+
+  if (users?.length) {
+    await Promise.all(
+      users.map((user) =>
+        notifyProjectAssigned({
+          user,
+          project,
+        })
+      )
+    );
+  }
 
   return { project: sanitizeProject(project) };
 };
@@ -248,6 +280,7 @@ export const updateProject = async ({ id, payload, requester }) => {
   }
 
   const { name, shortCode, description, members, isActive } = payload;
+  const previousMemberIds = project.members.map((memberId) => memberId.toString());
 
   if (name) project.name = name;
   if (description !== undefined) project.description = description;
@@ -283,6 +316,20 @@ export const updateProject = async ({ id, payload, requester }) => {
   }
 
   await project.save();
+
+  if (members) {
+    const users = await User.find({
+      _id: { $in: members },
+      company: adminUser.company,
+      role: "user",
+    });
+
+    await notifyNewProjectMembers({
+      users,
+      project,
+      existingMemberIds: previousMemberIds,
+    });
+  }
 
   return { project: sanitizeProject(project) };
 };
@@ -327,6 +374,7 @@ export const assignMembersToProject = async ({ id, payload, requester }) => {
   }
 
   const { members } = payload;
+  const previousMemberIds = project.members.map((memberId) => memberId.toString());
 
   const users = await User.find({
     _id: { $in: members },
@@ -340,6 +388,12 @@ export const assignMembersToProject = async ({ id, payload, requester }) => {
 
   project.members = [...new Set(users.map((u) => u._id.toString()))];
   await project.save();
+
+  await notifyNewProjectMembers({
+    users,
+    project,
+    existingMemberIds: previousMemberIds,
+  });
 
   return { project: sanitizeProject(project) };
 };

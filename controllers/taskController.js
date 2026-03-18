@@ -3,16 +3,17 @@ import { sendResponse } from "../utils/sendResponse.js";
 import * as taskService from "../services/taskService.js";
 
 export const createTask = asyncHandler(async (req, res) => {
-  const result = await taskService.createTask({
+  const data = await taskService.createTask({
     payload: req.body,
     requester: req.user,
+    refDocData: req.fileData || null,
   });
 
   return sendResponse(res, {
     status: true,
     statusCode: 201,
     message: "Task created successfully",
-    data: result,
+    data,
     error: null,
   });
 });
@@ -52,6 +53,7 @@ export const updateTask = asyncHandler(async (req, res) => {
     id: req.params.id,
     payload: req.body,
     requester: req.user,
+    refDocData: req.fileData || null,
   });
 
   return sendResponse(res, {

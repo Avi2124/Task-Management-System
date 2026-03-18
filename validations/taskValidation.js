@@ -15,6 +15,7 @@ export const createTaskSchema = Joi.object({
   project: objectId().required(),
   assignedTo: objectId().required(),
   reportTo: objectId().required(),
+  refDoc: Joi.string().optional(),
   priority: Joi.string().valid("high", "medium", "low").optional(),
   status: Joi.string()
     .valid(
@@ -35,6 +36,7 @@ export const updateTaskSchema = Joi.object({
   description: Joi.string().allow(""),
   assignedTo: objectId(),
   reportTo: objectId(),
+  refDoc: Joi.string().optional(),
   priority: Joi.string().valid("high", "medium", "low"),
   status: Joi.string().valid(
     "to-do",
