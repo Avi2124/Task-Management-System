@@ -6,7 +6,7 @@ import { sendSubscriptionReminderEmail } from "../config/mailer.js";
 export const startCompanySubscriptionCron = () => {
 
   // Runs every day at 1 AM
-  cron.schedule("0 0 * * *", async () => {
+  cron.schedule("* * * * *", async () => {
 
     try {
 

@@ -21,6 +21,7 @@ const taskSchema = new mongoose.Schema({
     updatedBy: {type: mongoose.Schema.Types.ObjectId, ref: "User", default: null},
     dueDate: {type: Date, default: null},
     isDeleted: {type: Boolean, default: false},
+    dueRemainder1dSentAt: {type: Date, default: null},
 }, {timestamps: true});
 
 taskSchema.index({project: 1, taskId: 1}, {unique: true});

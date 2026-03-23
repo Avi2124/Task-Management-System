@@ -4,6 +4,7 @@ import connectDB from "./config/db.js";
 import "dotenv/config";
 import { startCompanySubscriptionCron } from "./cron/companySubscriptionCron.js";
 import { initSocket } from "./config/socket.js";
+import { startTaskDueReminderCron } from "./cron/taskDueReminderCron.js";
 
 const PORT = process.env.PORT || 1312;
 
@@ -16,4 +17,5 @@ server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   console.log(`Socket test page: http://localhost:${PORT}/socket-test`);
   startCompanySubscriptionCron();
+  startTaskDueReminderCron();
 });

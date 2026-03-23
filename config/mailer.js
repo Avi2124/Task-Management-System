@@ -234,3 +234,36 @@ export const sendTaskStatusUpdatedEmail = async ({
     console.error("Error sending task status updated email:", error);
   }
 };
+
+export const sendTaskDueRemainderEmail = async ({
+  to, name,
+  taskTitle, projectName,
+  dueDate
+}) => {
+  try {
+    await transporter.sendMail({
+      from: `"Task Management" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+      to,
+      subject: "Task Due Remainder - 1 day left",
+      html: `
+      <div style="font-family: Arial, sans-serif;">
+        <h2>Hello ${name},</h2>
+        <p>This is a remainder that one of your tasks is due within <b>1 day</b>.</p>
+        <p>
+          <b>Task:</b> ${taskTitle}<br/>
+          <b>Project:</b> ${projectName || "N/A"}<br/>
+          <b>Due Date:</b> ${dueDate ? new Date(dueDate).toDateString(): "N/A"}
+        </p>
+        <p>Please make sure to complete it before the deadline.</p>
+        <br/>
+        <p>
+          Regards,<br/>
+          <b>Task management Plateform</p>
+        </p>
+        </div>
+      `
+    });
+  } catch (error) {
+    console.error("Error sending task due remainder email:", error);
+  }
+};
