@@ -11,6 +11,8 @@ const taskSchema = new mongoose.Schema({
     refDocPublicId: {type: String, default: null},
     refDocOriginalName: {type: String, default: null},
     refDocMimeType: {type: String, default: null},
+    refDocExtension: {type: String, default: null},
+    refDocResourceType: {type: String, default: null},
     assignedTo: {type: mongoose.Schema.Types.ObjectId, ref: "User", required: true},
     reportTo: {type: mongoose.Schema.Types.ObjectId, ref: "User", required: true},
     priority: {type: String, enum: ["high", "medium", "low"], default: "medium"},

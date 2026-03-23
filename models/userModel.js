@@ -49,7 +49,7 @@ const userSchema = new mongoose.Schema(
       default:
         "https://t4.ftcdn.net/jpg/07/03/86/11/360_F_703861114_7YxIPnoH8NfmbyEffOziaXy0EO1NpRHD.jpg",
     },
-
+    isDeleted: {type: Boolean, default: false},
     refreshToken: { type: String, default: null },
     otpCode: { type: String, default: null },
     otpExpiresAt: { type: Date, default: null },

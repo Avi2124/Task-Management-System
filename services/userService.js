@@ -31,7 +31,7 @@ const uploadProfileImage = async (file) => {
 };
 
 const ensureActiveCompanyForAdmin = async (companyId) => {
-  const company = await Company.findById(companyId).populate("plan");
+  const company = await Company.findOne({ _id: companyId, isDeleted: false }).populate("plan");
   if (!company) {
     throw new AppError("Company not found", 404, "COMPANY_NOT_FOUND");
   }
@@ -63,6 +63,7 @@ export const getAdminById = async ({ id, requester }) => {
   const admin = await User.findOne({
     _id: id,
     role: "admin",
+    isDeleted: false,
   }).select("-password -otpCode -otpExpiresAt -refreshToken -__v");
 
   if (!admin) {
@@ -91,7 +92,7 @@ export const getAllAdmins = async ({ query, requester }) => {
   if (page < 1) page = 1;
   if (limit < 1) limit = 10;
 
-  const match = { role: "admin" };
+  const match = { role: "admin", isDeleted: false };
   if (companyId) match.companyId = companyId;
 
   const pipeline = [{ $match: match }];
@@ -136,7 +137,7 @@ export const updateAdmin = async ({ id, payload, requester, file }) => {
     throw new AppError("Only superadmin can update admin", 403, "FORBIDDEN");
   }
 
-  const admin = await User.findOne({ _id: id, role: "admin" });
+  const admin = await User.findOne({ _id: id, role: "admin", isDeleted: false });
   if (!admin) {
     throw new AppError("Admin not found", 404, "ADMIN_NOT_FOUND");
   }
@@ -161,12 +162,15 @@ export const deleteAdmin = async ({ id, requester }) => {
     throw new AppError("Only superadmin can delete admin", 403, "FORBIDDEN");
   }
 
-  const admin = await User.findOne({ _id: id, role: "admin" });
+  const admin = await User.findOne({ _id: id, role: "admin", isDeleted: false });
   if (!admin) {
     throw new AppError("Admin not found", 404, "ADMIN_NOT_FOUND");
   }
 
-  await User.findByIdAndDelete(id);
+  admin.isDeleted = true;
+  admin.status = "inactive";
+  admin.refreshToken = null;
+  await admin.save();
 
   return { message: "Admin deleted successfully" };
 };
@@ -180,12 +184,12 @@ export const updateUser = async ({ id, payload, requester, file }) => {
     throw new AppError("Unauthorized", 401, "UNAUTHORIZED");
   }
 
-  const requesterUser = await User.findById(requester.id);
+  const requesterUser = await User.findOne({ _id: requester.id, isDeleted: false });
   if (!requesterUser) {
     throw new AppError("Requester not found", 401, "REQUESTER_NOT_FOUND");
   }
 
-  const user = await User.findOne({ _id: id, role: "user" });
+  const user = await User.findOne({ _id: id, role: "user", isDeleted: false });
   if (!user) {
     throw new AppError("User not found", 404, "USER_NOT_FOUND");
   }
@@ -231,14 +235,14 @@ export const deleteUser = async ({ id, requester }) => {
     throw new AppError("Unauthorized", 401, "UNAUTHORIZED");
   }
 
-  const adminUser = await User.findById(requester.id);
+  const adminUser = await User.findOne({ _id: requester.id, isDeleted: false });
   if (!adminUser || adminUser.role !== "admin") {
     throw new AppError("Only admin can delete users", 403, "FORBIDDEN");
   }
 
   await ensureActiveCompanyForAdmin(adminUser.company);
 
-  const user = await User.findOne({ _id: id, role: "user" });
+  const user = await User.findOne({ _id: id, role: "user", isDeleted: false });
   if (!user) {
     throw new AppError("User not found", 404, "USER_NOT_FOUND");
   }
@@ -247,7 +251,10 @@ export const deleteUser = async ({ id, requester }) => {
     throw new AppError("Admin can delete only users of own company", 403, "FORBIDDEN");
   }
 
-  await User.findByIdAndDelete(id);
+  user.isDeleted = true;
+  user.status = "inactive";
+  user.refreshToken = null;
+  await user.save();
 
   return { message: "User deleted successfully" };
 };
@@ -257,12 +264,12 @@ export const getUserById = async ({ id, requester }) => {
     throw new AppError("Unauthorized", 401, "UNAUTHORIZED");
   }
 
-  const requesterUser = await User.findById(requester.id);
+  const requesterUser = await User.findOne({ _id: requester.id, isDeleted: false });
   if (!requesterUser) {
     throw new AppError("Requester not found", 401, "REQUESTER_NOT_FOUND");
   }
 
-  const user = await User.findOne({ _id: id, role: "user" }).select(
+  const user = await User.findOne({ _id: id, role: "user", isDeleted: false }).select(
     "-password -otpCode -otpExpiresAt -refreshToken -__v"
   );
 
@@ -298,7 +305,7 @@ export const getAllUsers = async ({ query, requester }) => {
     throw new AppError("Unauthorized", 401, "UNAUTHORIZED");
   }
 
-  const requesterUser = await User.findById(requester.id);
+  const requesterUser = await User.findOne({ _id: requester.id, isDeleted: false });
   if (!requesterUser) {
     throw new AppError("Requester not found", 401, "REQUESTER_NOT_FOUND");
   }
@@ -322,11 +329,11 @@ export const getAllUsers = async ({ query, requester }) => {
   if (page < 1) page = 1;
   if (limit < 1) limit = 10;
 
-  const match = { role: "user" };
+  const match = { role: "user", isDeleted: false };
 
   if (requesterUser.role === "superadmin") {
     if (companyId) {
-      const companyExists = await Company.findOne({ companyId });
+      const companyExists = await Company.findOne({ companyId, isDeleted: false });
       if (!companyExists) {
         throw new AppError("Company not found", 404, "COMPANY_NOT_FOUND");
       }

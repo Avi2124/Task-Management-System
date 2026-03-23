@@ -8,6 +8,7 @@ const planSchema = new mongoose.Schema(
     projectLimit: { type: Number, default: 0 },
     userLimit: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
+    isDeleted: {type: Boolean, default: false},
   },
   { timestamps: true }
 );

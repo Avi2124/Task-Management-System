@@ -43,7 +43,7 @@ export const getPlans = async ({ query }) => {
   if (page < 1) page = 1;
   if (limit < 1) limit = 10;
 
-  const match = {};
+  const match = {isDeleted: false};
 
   // Apply filters
   Object.entries(filters).forEach(([key, value]) => {
@@ -123,7 +123,7 @@ export const updatePlan = async ({planId, payload, requester}) => {
     if(!requester || requester.role !== "superadmin"){
         throw new AppError("Only superadmin can update plans", "FORBIDDEN");
     }
-    const plan = await Plan.findById(planId);
+    const plan = await Plan.findOne({_id: planId, isDeleted: false});
     if(!plan){
         throw new AppError("Plan not found", 404, "PLAN_NOT_FOUND");
     }
@@ -153,9 +153,12 @@ export const deletePlan = async ({planId, requester}) => {
     if(!requester || requester.role !== "superadmin"){
         throw new AppError("only superadmin can delete plans", 403, "FORBIDDEN");
     }
-    const plan = await Plan.findById(planId);
+    const plan = await Plan.findOne({_id: planId, isDeleted: false});
     if(!plan){
         throw new AppError("Plan not found", 404, "PLAN_NOT_FOUND");
     }
-    await Plan.findByIdAndDelete(planId);
+    plan.isDeleted = true;
+    plan.isActive = false;
+    await plan.save();
+    return {message: "Plan deleted successfully"};
 };

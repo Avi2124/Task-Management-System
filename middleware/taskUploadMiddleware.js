@@ -1,5 +1,5 @@
 import multer from "multer";
-import { v2 as cloudinary } from "cloudinary";
+import cloudinary from "../config/cloudinary.js";
 import streamifier from "streamifier";
 import path from "path";
 import { AppError } from "../utils/AppError.js";
@@ -40,21 +40,38 @@ export const uploadTaskRefDoc = [
     if (!req.file) return next();
 
     try {
-      const originalExtension = path.extname(req.file.originalname || "").replace(".", "").toLowerCase();
-      const baseFileName = path.basename(req.file.originalname || "document", path.extname(req.file.originalname || ""));
-      const sanitizedBaseName = baseFileName.replace(/[^a-zA-Z0-9-_]/g, "-") || "document";
-      const attachmentFileName = `${sanitizedBaseName}.${originalExtension || "file"}`;
+      const originalExtension = path
+        .extname(req.file.originalname || "")
+        .replace(".", "")
+        .toLowerCase();
+
+      const baseFileName = path.basename(
+        req.file.originalname || "document",
+        path.extname(req.file.originalname || "")
+      );
+
+      const sanitizedBaseName =
+        baseFileName.replace(/[^a-zA-Z0-9-_ ]/g, "-").trim() || "document";
+
+      const isPdf = req.file.mimetype === "application/pdf";
+      const resourceType = isPdf ? "image" : "raw";
+
+      // IMPORTANT:
+      // For raw DOC/DOCX files, keep extension in public_id itself
+      const publicId = isPdf
+        ? `${Date.now()}-${sanitizedBaseName}`
+        : `${Date.now()}-${sanitizedBaseName}.${originalExtension}`;
 
       const result = await new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
           {
             folder: "task-ref-docs",
-            resource_type: "raw",
-            public_id: `${Date.now()}-${sanitizedBaseName}`,
+            resource_type: resourceType,
+            public_id: publicId,
             use_filename: false,
             unique_filename: false,
             overwrite: false,
-            filename_override: attachmentFileName,
+            filename_override: req.file.originalname,
           },
           (error, result) => {
             if (error) return reject(error);
@@ -65,22 +82,47 @@ export const uploadTaskRefDoc = [
         streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
       });
 
-      const downloadUrl = cloudinary.url(result.public_id, {
-        resource_type: "raw",
+      const extension = (originalExtension || result.format || "").toLowerCase();
+
+      const commonOptions = {
+        resource_type: resourceType,
         type: "upload",
         secure: true,
-        flags: `attachment:${attachmentFileName}`,
-        format: originalExtension || result.format,
-      });
+        version: result.version,
+      };
 
-      req.fileUrl = downloadUrl;
-      req.filePublicId = result.public_id;
+      let viewUrl = null;
+      let downloadUrl = null;
+
+      if (isPdf) {
+        viewUrl = cloudinary.url(result.public_id, {
+          ...commonOptions,
+          format: "pdf",
+        });
+
+        downloadUrl = cloudinary.url(result.public_id, {
+          ...commonOptions,
+          format: "pdf",
+          flags: "attachment",
+        });
+      } else {
+        // For raw DOC/DOCX, do NOT add format here
+        // because extension is already inside public_id
+        downloadUrl = cloudinary.url(result.public_id, {
+          ...commonOptions,
+          flags: "attachment",
+        });
+      }
+
       req.fileData = {
         url: downloadUrl,
-        viewUrl: result.secure_url,
+        viewUrl,
         publicId: result.public_id,
         originalName: req.file.originalname,
         mimeType: req.file.mimetype,
+        extension,
+        resourceType,
+        version: result.version,
       };
 
       next();

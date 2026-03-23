@@ -35,6 +35,7 @@ const companySchema = new mongoose.Schema(
       payment_intent_id: { type: String, default: null },
       status: { type: String, default: null },
     },
+    isDeleted: {type: Boolean, default: false},
   },
   { timestamps: true },
 );
