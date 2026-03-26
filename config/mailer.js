@@ -267,3 +267,22 @@ export const sendTaskDueRemainderEmail = async ({
     console.error("Error sending task due remainder email:", error);
   }
 };
+
+export const sendResetPasswordEmail = async ({ to, name, token }) => {
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM,
+    to,
+    subject: "Password Reset Request",
+    html: `
+    <div style="font-family: Arial, sens-serif; line-height: 1.6;">
+      <h2>Password Reset</h2>
+      <p>Hello ${name || "User"},</p>
+      <p>You requested to reset your password.</p>
+      <p>Use this reset token:</p>
+      <p style="fint-size: 18px; font-weight: bold;">${token}</p>
+      <p>This token will expire in 15 minutes.</p>
+      <p>If you did not request this, please ignore this email.</p>
+    </div>
+    `,
+  });
+};

@@ -225,3 +225,32 @@ export const deleteAdmin = asyncHandler(async (req, res) => {
     error: null,
   });
 });
+
+// --------- FORGOT PASSWORD ---------
+export const forgotPassword = asyncHandler(async (req, res) => {
+  const data = await authService.forgotPassword({
+    email: req.body.email,
+  });
+  return sendResponse(res, {
+    status: true,
+    statusCode: 200,
+    message: data.message,
+    data,
+    error: null
+  });
+});
+
+// ---------- RESET PASSWORD ---------
+export const resetPassword = asyncHandler(async (req, res) => {
+  const data = await authService.resetPassword({
+    token: req.body.token,
+    newPassword: req.body.newPassword,
+  });
+  return sendResponse(res, {
+    status: true,
+    statusCode: 200,
+    message: data.message,
+    data,
+    error: null
+  });
+});

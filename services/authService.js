@@ -1,13 +1,14 @@
 import bcrypt from "bcrypt";
+// import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import stripe from "../config/stripe.js";
 import { User } from "../models/userModel.js";
 import { Plan } from "../models/planModel.js";
 import { AppError } from "../utils/AppError.js";
 import Company from "../models/companyModel.js";
-import { Project } from "../models/projectModel.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/token.js";
-import { sendOtpEmail } from "../config/mailer.js";
+import { sendOtpEmail, sendResetPasswordEmail } from "../config/mailer.js";
 import cloudinary from "../config/cloudinary.js";
 import fs from "fs/promises";
 import { notifyUserCreated } from "./notificationService.js";
@@ -508,4 +509,50 @@ export const logout = async ({ refreshToken }) => {
     user.refreshToken = null;
     await user.save();
   }
+};
+
+// Reset Password and Forgot Password
+
+export const forgotPassword = async ({email}) => {
+  const user = await User.findOne({email});
+  if(!user){
+    return{message: "If an account with that email exists, a reset token has sent."};
+  }
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+  user.resetPasswordToken = hashedToken;
+  user.resetPasswordExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  await user.save({vallidateBeforeSave: false});
+  await sendResetPasswordEmail({
+    to: user.email,
+    name: user.name,
+    token: rawToken
+  });
+  return{
+    message: "If an account with that email exists, a reset token has been sent."
+  };
+};
+
+export const resetPassword = async ({token, newPassword}) => {
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+  const user = await User.findOne({
+    resetPasswordToken: hashedToken,
+    resetPasswordExpiresAt: {$gt: new Date()}
+  });
+
+  if(!user){
+    throw new AppError("Invalid or expired reset token", 400);
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  user.password = newPassword;
+  // user.password = await bcrypt.hash(newPassword, salt);
+  user.resetPasswordToken = null;
+  user.resetPasswordExpiresAt = null;
+  user.refreshToken = null;
+
+  await user.save();
+  return{
+    message: "Password reset successful. Please login again."
+  };
 };

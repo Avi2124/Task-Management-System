@@ -6,11 +6,12 @@ export const getDashboard = asyncHandler(async (req, res) => {
   const data = await dashboardService.getDashboard({
     requester: req.user,
   });
+  console.log(req.user.role);
 
   return sendResponse(res, {
     status: true,
     statusCode: 200,
-    message: `${data.role} dashboard fetched successfully`,
+    message: `${req.user.role} dashboard fetched successfully`,
     data,
     error: null,
   });

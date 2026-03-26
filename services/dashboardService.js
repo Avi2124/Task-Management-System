@@ -6,6 +6,7 @@ import { Task } from "../models/taskModel.js";
 import { Comment } from "../models/commentModel.js";
 import { TaskHistory } from "../models/taskHistoryModel.js";
 import { AppError } from "../utils/AppError.js";
+import { getAdminById } from "./userService.js";
 
 export const getDashboard = async ({ requester }) => {
   const requesterUser = await User.findById(requester.id)

@@ -1,8 +1,9 @@
 import express from "express";
 import { userMiddleware } from "../middleware/userMiddleware.js";
 import { idParamSchema, loginSchema, logoutSchema, refreshTokenSchema, registerAdminSchema, createUserSchema, updateUserSchema, verifyOtpSchema, createSuperadminSchema, updateAdminSchema } from "../validations/userValidation.js";
-import { createSuperadmin, createUser, deleteUser, getAllUsers, getUserById, login, logout, refreshAccessToken, registerAdmin, updateUser, verifyOtpAndIssueTokens, getAdminById, getAllAdmins, updateAdmin, deleteAdmin } from "../controllers/userController.js";
+import { createSuperadmin, createUser, deleteUser, getAllUsers, getUserById, login, logout, refreshAccessToken, registerAdmin, updateUser, verifyOtpAndIssueTokens, getAdminById, getAllAdmins, updateAdmin, deleteAdmin, forgotPassword, resetPassword } from "../controllers/userController.js";
 import { upload } from "../middleware/uploadMiddleware.js";
+import { asyncHandler } from "../middleware/asyncHandler.js";
 
 const userRoutes = express.Router();
 
@@ -28,5 +29,9 @@ userRoutes.put("/update-user/:id",upload.single("profileImage"),userMiddleware({
 userRoutes.delete("/delete-user/:id",userMiddleware({auth: true,roles: ["admin"],params: idParamSchema,}),deleteUser);
 userRoutes.get("/get-user/:id",userMiddleware({auth: true, roles: ["admin", "user"], params: idParamSchema,}),getUserById);
 userRoutes.get("/get-users",userMiddleware({auth: true,roles: ["admin"],}),getAllUsers);
+
+// Reset and Forgot Password
+userRoutes.post("/forgot-password", asyncHandler(forgotPassword));
+userRoutes.post("/reset-password", asyncHandler(resetPassword));
 
 export default userRoutes;

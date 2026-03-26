@@ -17,23 +17,17 @@ export const initSocket = (server) => {
     socket.on("register", (userId) => {
       if (!userId) return;
       onlineUsers.set(String(userId), socket.id);
-      socket.data.userId = String(userId);
       console.log(`User registered: ${userId} -> ${socket.id}`);
     });
 
-    socket.on("disconnect", (reason) => {
-      const userId = socket.data.userId;
-      if (userId && onlineUsers.get(userId) === socket.id) {
-        onlineUsers.delete(userId);
-      } else {
-        for (const [storedUserId, socketId] of onlineUsers.entries()) {
-          if (socketId === socket.id) {
-            onlineUsers.delete(storedUserId);
-            break;
-          }
+    socket.on("disconnect", () => {
+      for (const [userId, socketId] of onlineUsers.entries()) {
+        if (socketId === socket.id) {
+          onlineUsers.delete(userId);
+          break;
         }
       }
-      console.log("Socket disconnected:", socket.id, reason);
+      console.log("Socket disconnected:", socket.id);
     });
   });
 
