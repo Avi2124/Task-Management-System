@@ -1,6 +1,6 @@
 import express from "express";
 import { userMiddleware } from "../middleware/userMiddleware.js";
-import { idParamSchema, loginSchema, logoutSchema, refreshTokenSchema, registerAdminSchema, createUserSchema, updateUserSchema, verifyOtpSchema, createSuperadminSchema, updateAdminSchema } from "../validations/userValidation.js";
+import { idParamSchema, loginSchema, logoutSchema, refreshTokenSchema, registerAdminSchema, createUserSchema, updateUserSchema, verifyOtpSchema, createSuperadminSchema, updateAdminSchema, forgotPasswordSchema, resetPasswordSchema } from "../validations/userValidation.js";
 import { createSuperadmin, createUser, deleteUser, getAllUsers, getUserById, login, logout, refreshAccessToken, registerAdmin, updateUser, verifyOtpAndIssueTokens, getAdminById, getAllAdmins, updateAdmin, deleteAdmin, forgotPassword, resetPassword } from "../controllers/userController.js";
 import { upload } from "../middleware/uploadMiddleware.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
@@ -31,7 +31,7 @@ userRoutes.get("/get-user/:id",userMiddleware({auth: true, roles: ["admin", "use
 userRoutes.get("/get-users",userMiddleware({auth: true,roles: ["admin"],}),getAllUsers);
 
 // Reset and Forgot Password
-userRoutes.post("/forgot-password", asyncHandler(forgotPassword));
-userRoutes.post("/reset-password", asyncHandler(resetPassword));
+userRoutes.post("/forgot-password", userMiddleware({body: forgotPasswordSchema}), asyncHandler(forgotPassword));
+userRoutes.post("/reset-password", userMiddleware({body: resetPasswordSchema}), asyncHandler(resetPassword));
 
 export default userRoutes;

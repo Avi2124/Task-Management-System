@@ -1,5 +1,4 @@
 import bcrypt from "bcrypt";
-// import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import stripe from "../config/stripe.js";
@@ -435,20 +434,20 @@ export const verifyOtpAndIssueTokens = async ({ email, otp }) => {
   await user.save();
 
   return {
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      company: user.company,
-      companyId: user.companyId,
-      profileImage: user.profileImage,
-      companyStatus: company?.status || null,
-      renewRequired: user.role === "admin" && company?.status !== "active",
-      accessToken,
-      refreshToken,
-    },
-  };
+  user: {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    company: user.company,
+    companyId: user.companyId,
+    profileImage: user.profileImage,
+    companyStatus: company?.status || null,
+    renewRequired: user.role === "admin" && company?.status !== "active",
+  },
+  accessToken,
+  refreshToken,
+};
 };
 
 export const refreshAccessToken = async ({ refreshToken }) => {
@@ -516,7 +515,7 @@ export const logout = async ({ refreshToken }) => {
 export const forgotPassword = async ({email}) => {
   const user = await User.findOne({email});
   if(!user){
-    return{message: "If an account with that email exists, a reset token has sent."};
+    return{message: "User Not Found"};
   }
   const rawToken = crypto.randomBytes(32).toString("hex");
   const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
@@ -529,7 +528,7 @@ export const forgotPassword = async ({email}) => {
     token: rawToken
   });
   return{
-    message: "If an account with that email exists, a reset token has been sent."
+    message: "A reset token has been sent on your e-mail."
   };
 };
 
@@ -543,10 +542,7 @@ export const resetPassword = async ({token, newPassword}) => {
   if(!user){
     throw new AppError("Invalid or expired reset token", 400);
   }
-
-  const salt = await bcrypt.genSalt(10);
   user.password = newPassword;
-  // user.password = await bcrypt.hash(newPassword, salt);
   user.resetPasswordToken = null;
   user.resetPasswordExpiresAt = null;
   user.refreshToken = null;

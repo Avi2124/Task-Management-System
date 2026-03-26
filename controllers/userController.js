@@ -3,6 +3,26 @@ import { sendResponse } from "../utils/sendResponse.js";
 import * as authService from "../services/authService.js";
 import * as userService from "../services/userService.js";
 
+const buildCookieOptions = (maxAge) => ({
+  httpOnly: true,
+  sameSite: "lax",
+  secure: process.env.NODE_ENV === "production",
+  maxAge
+});
+
+const setAuthCookies = (res, accessToken, refreshToken) => {
+  const accessMaxAge = Number(process.env.ACCESS_COOKIE_MAX_AGE_MS || 15 * 60 * 1000);
+  const refreshMaxAge = Number(process.env.REFRESH_COOKIE_MAX_AGE_MS || 7 * 24 * 60 * 60 * 1000);
+  res.cookie("accessToken", accessToken, buildCookieOptions(accessMaxAge));
+  res.cookie("refreshToken", refreshToken, buildCookieOptions(refreshMaxAge));
+}
+
+const clearAuthCookies = (res) => {
+  const options = buildCookieOptions(0);
+  res.clearCookie("accessToken", options);
+  res.clearCookie("refreshToken", options);
+};
+
 // ---------- SUPERADMIN SIGNUP ----------
 export const createSuperadmin = asyncHandler(async (req, res) => {
   const result = await authService.createSuperadmin(req.body, req.file);
@@ -46,6 +66,8 @@ export const login = asyncHandler(async (req, res) => {
 export const verifyOtpAndIssueTokens = asyncHandler(async (req, res) => {
   const result = await authService.verifyOtpAndIssueTokens(req.body);
 
+  setAuthCookies(res, result.accessToken, result.refreshToken);
+
   return sendResponse(res, {
     status: true,
     statusCode: 200,
@@ -57,7 +79,11 @@ export const verifyOtpAndIssueTokens = asyncHandler(async (req, res) => {
 
 // ---------- REFRESH TOKEN ----------
 export const refreshAccessToken = asyncHandler(async (req, res) => {
-  const result = await authService.refreshAccessToken(req.body);
+  const result = await authService.refreshAccessToken({
+    refreshToken: req.body.refreshToken || req.cookies?.refreshToken,
+  });
+
+  setAuthCookies(res, result.accessToken, result.refreshToken);
 
   return sendResponse(res, {
     status: true,
@@ -136,7 +162,11 @@ export const getAllUsers = asyncHandler(async (req, res) => {
 
 // ---------- LOGOUT ----------
 export const logout = asyncHandler(async (req, res) => {
-  await authService.logout(req.body);
+  await authService.logout({
+    refreshToken: req.cookies?.refreshToken || req.body.refreshToken
+  });
+
+  clearAuthCookies(res);
 
   return sendResponse(res, {
     status: true,
@@ -235,7 +265,7 @@ export const forgotPassword = asyncHandler(async (req, res) => {
     status: true,
     statusCode: 200,
     message: data.message,
-    data,
+    data: null,
     error: null
   });
 });
@@ -249,8 +279,8 @@ export const resetPassword = asyncHandler(async (req, res) => {
   return sendResponse(res, {
     status: true,
     statusCode: 200,
-    message: data.message,
-    data,
+    message: data.message, 
+    data: null,
     error: null
   });
 });

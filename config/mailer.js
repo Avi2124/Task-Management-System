@@ -270,7 +270,7 @@ export const sendTaskDueRemainderEmail = async ({
 
 export const sendResetPasswordEmail = async ({ to, name, token }) => {
   await transporter.sendMail({
-    from: process.env.EMAIL_FROM,
+    from: `"Task Management" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
     to,
     subject: "Password Reset Request",
     html: `

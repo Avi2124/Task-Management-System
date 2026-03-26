@@ -87,3 +87,14 @@ export const registerAdminSchema = Joi.object({
 
   planId: objectId().required(),
 });
+
+// forgot password
+export const forgotPasswordSchema = Joi.object({
+  email: Joi.string().email().required()
+});
+
+// reset password
+export const resetPasswordSchema = Joi.object({
+  token: Joi.string().required(),
+  newPassword: Joi.string().min(6).max(16).required()
+});

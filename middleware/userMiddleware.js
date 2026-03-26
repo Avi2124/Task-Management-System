@@ -15,15 +15,30 @@ const buildUserMiddleware = ({
     if (auth) {
       const header = req.headers.authorization || req.headers.Authorization;
 
-      if (!header || !header.startsWith("Bearer ")) {
+let bearerToken = null;
+if (header && header.startsWith("Bearer ")) {
+  const parts = header.split(" ");
+  if (parts.length === 2 && parts[1]?.trim()) {
+    bearerToken = parts[1].trim();
+  }
+}
+
+const cookieToken =
+  typeof req.cookies?.accessToken === "string"
+    ? req.cookies.accessToken.trim()
+    : null;
+
+const token = bearerToken || cookieToken;
+
+      if (!token) {
         throw new AppError(
-          "Authorization header missing or invalid",
+          "Access Token Missing",
           401,
           "NO_TOKEN",
         );
       }
 
-      const token = header.split(" ")[1];
+      // const token = header.split(" ")[1];
 
       let decoded;
       try {

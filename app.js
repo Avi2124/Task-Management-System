@@ -10,6 +10,23 @@ import taskRoutes from "./routes/taskRoutes.js";
 import commentRoutes from "./routes/commentRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 
+const parseCookies = (cookieHeader = "") => {
+  return cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .reduce((acc, part) => {
+      const index = part.indexOf("=");
+      if (index === -1) return acc;
+
+      const key = part.slice(0, index).trim();
+      const value = decodeURIComponent(part.slice(index + 1).trim());
+
+      acc[key] = value;
+      return acc;
+    }, {});
+};
+
 const app = express();
 
 app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }), (req, res, next) => {
@@ -19,6 +36,10 @@ app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }), (req,
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use((req, res, next) => {
+  req.cookies = parseCookies(req.headers.cookie || "");
+  next();
+})
 
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
